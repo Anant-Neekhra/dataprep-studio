@@ -42,3 +42,10 @@ App at `http://localhost:8080`
 - NiceGUI frontend skeleton that calls the backend `/health` endpoint on load and displays live connection status
 - Confirmed end-to-end: frontend successfully reaches backend over HTTP, green "Connected" status shown
 - Separate virtual environments for backend and frontend, `.gitignore` configured
+
+### Day 2 — Dataset Upload & Overview
+- `POST /datasets/upload` endpoint: accepts CSV files, parses with Pandas, validates (rejects non-CSV, empty files, unparseable files with proper 400 errors), stores in-memory keyed by a generated `dataset_id`
+- `GET /datasets/{id}/overview` endpoint: returns rows, columns, memory usage, missing value %, duplicate row count, feature type breakdown (numerical/categorical/boolean/datetime/text/mixed), and per-column dtypes
+- In-memory `DatasetStore` (Day 15 will migrate this to SQLite for persistence across restarts)
+- NiceGUI Upload page (`/upload`): file picker → calls upload endpoint → calls overview endpoint → renders stats cards, feature type breakdown, and a column dtype table
+- Confirmed end-to-end with a real CSV: correct row/column counts, missing %, and dtype detection

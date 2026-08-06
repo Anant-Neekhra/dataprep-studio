@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import health
+from app.api import health, datasets
 from app.config import settings
 
 app = FastAPI(
@@ -18,6 +18,7 @@ app.add_middleware(
 )
 
 app.include_router(health.router, tags=["health"])
+app.include_router(datasets.router)
 
 
 @app.get("/")

@@ -49,3 +49,15 @@ App at `http://localhost:8080`
 - In-memory `DatasetStore` (Day 15 will migrate this to SQLite for persistence across restarts)
 - NiceGUI Upload page (`/upload`): file picker → calls upload endpoint → calls overview endpoint → renders stats cards, feature type breakdown, and a column dtype table
 - Confirmed end-to-end with a real CSV: correct row/column counts, missing %, and dtype detection
+
+### Day 3 — Data Profiling Engine + Human-in-the-Loop Type Override
+- Per-column profiling: count, mean, median, mode, std, variance, min/max, quartiles, range, skewness, kurtosis, missing %, unique count, cardinality ratio (`GET /datasets/{id}/profile`)
+- Numeric stats computed only for columns whose **effective type** is `numerical` — prevents meaningless mean/std/skewness on ID-like columns that pandas parses as int64
+- **Logical type override system**: separates pandas dtype (fixed) from logical/semantic type (auto-detected, user-overridable)
+  - Heuristic auto-detection of ID-like columns (name pattern matching + high-cardinality check)
+  - `GET /datasets/{id}/column-types` — detected vs effective type per column
+  - `PUT /datasets/{id}/columns/{column}/type` — override a column's logical type
+  - `DELETE /datasets/{id}/columns/{column}/type` — revert to auto-detection
+  - Overrides propagate through both Overview and Profile endpoints automatically
+- NiceGUI Column Type Review page: dropdown per column to override type, shows "Detected → Overridden" state, Apply/Reset buttons wired to the override endpoints
+- Verified: ID-like column auto-detected correctly, overriding a numeric column to `id` correctly nulls out its mean/std/skewness in the profile response, reset restores auto-detection

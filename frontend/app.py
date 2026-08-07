@@ -130,6 +130,10 @@ async def upload_page():
                             "w-full mt-2"
                         )
 
+                    ui.link(
+                        "Review & Override Column Types →", f"/column-types/{dataset_id}"
+                    ).classes("mt-2")
+
             except httpx.HTTPStatusError as ex:
                 overview_container.clear()
                 with overview_container:
@@ -139,3 +143,76 @@ async def upload_page():
         ui.upload(on_upload=handle_upload, auto_upload=True).classes(
             "max-w-full"
         ).props("accept=.csv")
+
+@ui.page("/column-types/{dataset_id}")
+async def column_types_page(dataset_id: str):
+    with ui.column().classes("items-center w-full mt-10 gap-4"):
+        ui.label("Column Type Review").classes("text-2xl font-bold")
+        ui.label(
+            "Auto-detection isn't always right — especially for ID-like columns. "
+            "Review and override below."
+        ).classes("text-sm text-gray-400 text-center max-w-xl")
+        ui.link("← Back to upload", "/upload").classes("text-sm text-gray-400")
+
+        table_container = ui.column().classes("w-full max-w-3xl gap-2")
+
+        type_options = [
+            "numerical", "categorical", "boolean", "datetime", "text", "id", "mixed"
+        ]
+
+        async def load_column_types():
+            table_container.clear()
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(f"{BACKEND_URL}/datasets/{dataset_id}/column-types")
+                response.raise_for_status()
+                column_types = response.json()
+
+            with table_container:
+                for col_info in column_types:
+                    with ui.card().classes("w-full"):
+                        with ui.row().classes("w-full items-center justify-between"):
+                            with ui.column().classes("gap-0"):
+                                ui.label(col_info["column"]).classes("font-semibold")
+                                ui.label(f"pandas dtype: {col_info['pandas_dtype']}").classes(
+                                    "text-xs text-gray-400"
+                                )
+                                detected_line = f"Detected: {col_info['detected_type']}"
+                                if col_info["is_overridden"]:
+                                    detected_line += f"  →  Overridden: {col_info['effective_type']}"
+                                ui.label(detected_line).classes(
+                                    "text-xs "
+                                    + ("text-orange-500" if col_info["is_overridden"] else "text-gray-500")
+                                )
+
+                            with ui.row().classes("items-center gap-2"):
+                                select = ui.select(
+                                    options=type_options,
+                                    value=col_info["effective_type"],
+                                ).classes("w-40")
+
+                                async def apply_override(
+                                    column=col_info["column"], select=select
+                                ):
+                                    async with httpx.AsyncClient(timeout=15.0) as client:
+                                        await client.put(
+                                            f"{BACKEND_URL}/datasets/{dataset_id}/columns/{column}/type",
+                                            json={"logical_type": select.value},
+                                        )
+                                    ui.notify(f"'{column}' set to '{select.value}'", type="positive")
+                                    await load_column_types()
+
+                                async def reset_override(column=col_info["column"]):
+                                    async with httpx.AsyncClient(timeout=15.0) as client:
+                                        await client.delete(
+                                            f"{BACKEND_URL}/datasets/{dataset_id}/columns/{column}/type"
+                                        )
+                                    ui.notify(f"'{column}' reset to auto-detected", type="info")
+                                    await load_column_types()
+
+                                ui.button("Apply", on_click=apply_override).props("dense")
+                                if col_info["is_overridden"]:
+                                    ui.button("Reset", on_click=reset_override).props(
+                                        "dense flat"
+                                    )
+
+        ui.timer(0.1, load_column_types, once=True)

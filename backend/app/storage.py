@@ -4,14 +4,6 @@ import pandas as pd
 
 
 class DatasetStore:
-    """
-    Holds uploaded datasets in memory while the app is running, keyed by
-    a generated dataset_id. This is intentionally simple for now — later
-    (Day 15, History Manager) we'll back this with SQLite so versions
-    persist across restarts. For Day 2, in-memory is enough to prove the
-    upload -> overview flow end to end.
-    """
-
     def __init__(self):
         self._datasets: dict[str, dict] = {}
 
@@ -20,6 +12,7 @@ class DatasetStore:
         self._datasets[dataset_id] = {
             "filename": filename,
             "df": df,
+            "type_overrides": {},  # column_name -> logical type string
         }
         return dataset_id
 
@@ -34,7 +27,22 @@ class DatasetStore:
     def exists(self, dataset_id: str) -> bool:
         return dataset_id in self._datasets
 
+    def get_overrides(self, dataset_id: str) -> dict[str, str]:
+        entry = self._datasets.get(dataset_id)
+        return entry["type_overrides"] if entry else {}
 
-# A single shared instance — every request handler imports this same
-# object, so data uploaded in one request is visible in the next.
+    def set_override(self, dataset_id: str, column: str, logical_type: str) -> None:
+        entry = self._datasets.get(dataset_id)
+        if entry is None:
+            raise KeyError(f"Dataset {dataset_id} not found")
+        if column not in entry["df"].columns:
+            raise KeyError(f"Column {column} not found in dataset {dataset_id}")
+        entry["type_overrides"][column] = logical_type
+
+    def clear_override(self, dataset_id: str, column: str) -> None:
+        entry = self._datasets.get(dataset_id)
+        if entry:
+            entry["type_overrides"].pop(column, None)
+
+
 dataset_store = DatasetStore()

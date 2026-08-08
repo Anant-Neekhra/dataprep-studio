@@ -1,0 +1,78 @@
+- id: whitespace_issues
+  category: data_quality
+  severity: low
+  applies_to: categorical
+  condition: "has_whitespace == True"
+  recommendation: "Strip leading/trailing whitespace"
+  reason: "Values with extra whitespace (e.g. 'Yes ' vs 'Yes') are treated as distinct categories by most tools, silently inflating cardinality and breaking exact-match filters or joins."
+  advantages:
+    - "Simple, safe, one-line fix"
+    - "Prevents duplicate categories caused purely by formatting"
+  disadvantages:
+    - "None — this is almost always safe to apply"
+  alternatives:
+    - "Leave as-is (only safe if you've confirmed whitespace is meaningful, which is rare)"
+  docs_url: "https://pandas.pydata.org/docs/reference/api/pandas.Series.str.strip.html"
+
+- id: whitespace_issues_text
+  category: data_quality
+  severity: low
+  applies_to: text
+  condition: "has_whitespace == True"
+  recommendation: "Strip leading/trailing whitespace"
+  reason: "Values with extra whitespace (e.g. 'Yes ' vs 'Yes') are treated as distinct categories by most tools, silently inflating cardinality and breaking exact-match filters or joins."
+  advantages:
+    - "Simple, safe, one-line fix"
+    - "Prevents duplicate categories caused purely by formatting"
+  disadvantages:
+    - "None — this is almost always safe to apply"
+  alternatives:
+    - "Leave as-is (only safe if you've confirmed whitespace is meaningful, which is rare)"
+  docs_url: "https://pandas.pydata.org/docs/reference/api/pandas.Series.str.strip.html"
+
+- id: case_inconsistency
+  category: data_quality
+  severity: medium
+  applies_to: categorical
+  condition: "has_case_inconsistency == True"
+  recommendation: "Normalize casing (e.g. convert all values to lowercase or title case)"
+  reason: "Values like 'Yes', 'yes', and 'YES' are being counted as separate categories, which fragments your data and skews frequency counts and any downstream encoding."
+  advantages:
+    - "Consolidates fragmented categories into their true single category"
+    - "Fixes frequency counts and encoding cardinality"
+  disadvantages:
+    - "If casing is actually meaningful in your domain (rare), normalizing would lose that distinction"
+  alternatives:
+    - "Manual review of specific values before normalizing"
+  docs_url: "https://pandas.pydata.org/docs/reference/api/pandas.Series.str.lower.html"
+
+- id: constant_column
+  category: data_quality
+  severity: high
+  applies_to: any
+  condition: "is_constant == True"
+  recommendation: "Drop this column"
+  reason: "This column has only one distinct value across every row. A feature that never changes carries zero information for analysis or modeling."
+  advantages:
+    - "Removes a column that adds no analytical or predictive value"
+    - "Reduces dataset size with zero information loss"
+  disadvantages:
+    - "None — a truly constant column cannot help any downstream task"
+  alternatives:
+    - "Keep only if you specifically need it for external reference (e.g. a fixed dataset version tag)"
+  docs_url: "https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.drop.html"
+
+- id: low_variance_column
+  category: data_quality
+  severity: medium
+  applies_to: any
+  condition: "is_low_variance == True"
+  recommendation: "Review this column — consider dropping if not domain-critical"
+  reason: "Over 99% of values in this column are the same. It's not fully constant, but it carries very little variation to learn from or analyze."
+  advantages:
+    - "Simplifies the dataset by removing near-uninformative columns"
+  disadvantages:
+    - "The rare differing values might represent an important edge case (e.g. fraud, defects) — don't drop blindly, review first"
+  alternatives:
+    - "Keep the column but treat it as a rare-event flag rather than a standard feature"
+  docs_url: "https://scikit-learn.org/stable/modules/generated/sklearn.feature_selection.VarianceThreshold.html"

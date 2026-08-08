@@ -3,8 +3,8 @@ import io
 import pandas as pd
 from fastapi import APIRouter, HTTPException, UploadFile
 
-from app.rule_engine.engine import evaluate_rules
-from app.rule_engine.facts import build_facts
+from app.rule_engine.engine import evaluate_dataset_rules, evaluate_rules
+from app.rule_engine.facts import build_dataset_facts, build_facts
 from app.schemas import (
     ColumnTypeInfo,
     DatasetOverview,
@@ -132,11 +132,17 @@ def get_recommendations(dataset_id: str) -> list[Recommendation]:
     overrides = dataset_store.get_overrides(dataset_id)
 
     all_recommendations = []
+
+    # Column-level recommendations (missing values, quality issues, etc.)
     for col in df.columns:
         _, effective_type, _ = get_effective_type(df[col], col, overrides)
         profile = profile_column(df[col], col, effective_type)
-        facts = build_facts(profile)
+        facts = build_facts(profile, series=df[col])
         recommendations = evaluate_rules(col, effective_type, facts)
         all_recommendations.extend(recommendations)
+
+    # Dataset-level recommendations (duplicate rows/columns)
+    dataset_facts = build_dataset_facts(df)
+    all_recommendations.extend(evaluate_dataset_rules(dataset_facts))
 
     return all_recommendations

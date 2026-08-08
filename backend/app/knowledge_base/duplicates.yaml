@@ -1,0 +1,48 @@
+- id: duplicate_rows_present
+  category: data_quality
+  severity: medium
+  applies_to: dataset
+  condition: "duplicate_row_pct > 0 and duplicate_row_pct <= 10"
+  recommendation: "Remove duplicate rows (keep first occurrence)"
+  reason: "Duplicate rows don't add new information and can bias statistics (e.g. means, counts) by over-weighting repeated observations."
+  advantages:
+    - "Ensures each observation is counted once"
+    - "Prevents inflated confidence from repeated data points"
+  disadvantages:
+    - "If duplicates are legitimate (e.g. two customers happened to have identical records), removing them loses real data"
+  alternatives:
+    - "Keep last occurrence instead of first"
+    - "Review duplicates manually before removing"
+  docs_url: "https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.drop_duplicates.html"
+
+- id: duplicate_rows_significant
+  category: data_quality
+  severity: high
+  applies_to: dataset
+  condition: "duplicate_row_pct > 10"
+  recommendation: "Remove duplicate rows (keep first occurrence)"
+  reason: "Over 10% of rows are exact duplicates — this is high enough to meaningfully distort any statistics or model trained on this data."
+  advantages:
+    - "Ensures each observation is counted once"
+    - "Prevents significantly inflated confidence from repeated data points"
+  disadvantages:
+    - "Worth investigating why so many duplicates exist — could indicate an upstream data pipeline issue"
+  alternatives:
+    - "Keep last occurrence instead of first"
+  docs_url: "https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.drop_duplicates.html"
+
+- id: duplicate_columns_present
+  category: data_quality
+  severity: medium
+  applies_to: dataset
+  condition: "duplicate_column_count > 0"
+  recommendation: "Remove duplicate columns"
+  reason: "One or more pairs of columns contain identical values in every row. Keeping both adds redundant, perfectly correlated features with no new information."
+  advantages:
+    - "Reduces dimensionality without losing any information"
+    - "Prevents artificial multicollinearity in correlation analysis"
+  disadvantages:
+    - "If the duplicate column names carry different meaning despite identical values (rare), review before dropping"
+  alternatives:
+    - "Keep one, rename to reflect its actual meaning if ambiguous"
+  docs_url: "https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.drop.html"

@@ -71,3 +71,14 @@ App at `http://localhost:8080`
 - Reusable **Recommendation Card** component in the frontend (`ui.expansion`): shows column + recommendation + severity/category collapsed by default, expands to reveal reason/advantages/disadvantages/alternatives/docs link — this component will be reused for every future module (missing values, outliers, encoding, scaling, etc.)
 - Also refined ID-column heuristic from Day 3 to add a word-count signal, correctly distinguishing single-token IDs from near-unique free-text columns
 - Verified end-to-end: uploaded a dataset
+
+### Day 5 — Data Quality Module
+- Quality detectors (`services/quality_service.py`): whitespace issues, case inconsistency, constant columns, low-variance columns, duplicate rows, duplicate column pairs
+- Extended `build_facts()` to accept the raw column series (optional) and compute quality signals alongside existing profiling stats
+- New `build_dataset_facts()` — facts scoped to the whole dataset rather than one column, for issues like duplicate rows/columns where no single column is responsible
+- Rule engine extended with `applies_to: dataset` support — a separate `evaluate_dataset_rules()` path, explicitly excluded from per-column evaluation
+- `knowledge_base/quality.yaml` — whitespace, case inconsistency, constant/low-variance column rules
+- `knowledge_base/duplicates.yaml` — duplicate row (tiered by %) and duplicate column rules
+- `/datasets/{id}/recommendations` now merges column-level and dataset-level recommendations into one list
+- No new frontend work required — the existing Recommendation Card page from Day 4 renders all of today's new rule types automatically, confirming the architecture decision to build that component generically was the right call
+- Verified: whitespace/case-inconsistency correctly flagged on a test categorical column, duplicate row detection confirmed on a dataset with repeated records

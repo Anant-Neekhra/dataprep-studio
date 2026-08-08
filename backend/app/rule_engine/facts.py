@@ -1,19 +1,21 @@
+import pandas as pd
+
 from app.schemas import ColumnProfile
+from app.services.quality_service import (
+    has_case_inconsistency,
+    has_whitespace_issues,
+    is_constant_column,
+    is_low_variance_column,
+)
 
 
-def build_facts(profile: ColumnProfile) -> dict:
+def build_facts(profile: ColumnProfile, series: pd.Series | None = None) -> dict:
     """
-    Converts a ColumnProfile into a flat dict of values that YAML rule
-    conditions can reference by name. Every key here is a name a
-    condition string is allowed to use, e.g. "missing_pct > 30".
-
-    None values are converted to 0 or False rather than left as None,
-    because simple_eval doesn't handle comparisons against None
-    gracefully (e.g. "skewness > 1" would error if skewness is None).
-    A rule that only makes sense when a stat exists should be scoped
-    with applies_to instead of relying on None-checks in the condition.
+    Converts a ColumnProfile (+ optionally the raw series, for quality
+    checks that need actual values rather than just precomputed stats)
+    into a flat dict of values YAML rule conditions can reference.
     """
-    return {
+    facts = {
         "missing_pct": profile.missing_percentage,
         "missing_count": profile.missing_count,
         "unique_count": profile.unique_count,
@@ -28,4 +30,36 @@ def build_facts(profile: ColumnProfile) -> dict:
         "range": profile.range or 0,
         "skewness": profile.skewness or 0,
         "kurtosis": profile.kurtosis or 0,
+        # Quality signals default to False if we don't have the raw
+        # series (facts should still be usable without it).
+        "has_whitespace": False,
+        "has_case_inconsistency": False,
+        "is_constant": False,
+        "is_low_variance": False,
+    }
+
+    if series is not None:
+        facts["has_whitespace"] = has_whitespace_issues(series)
+        facts["has_case_inconsistency"] = has_case_inconsistency(series)
+        facts["is_constant"] = is_constant_column(series)
+        facts["is_low_variance"] = is_low_variance_column(series, profile.cardinality_ratio)
+
+    return facts
+
+
+def build_dataset_facts(df: pd.DataFrame) -> dict:
+    """
+    Facts about the dataset as a whole, not any single column — used for
+    rules like duplicate row/column detection where no one column is
+    responsible for the issue.
+    """
+    from app.services.quality_service import detect_duplicate_columns, detect_duplicate_rows
+
+    dup_rows = detect_duplicate_rows(df)
+    dup_columns = detect_duplicate_columns(df)
+
+    return {
+        "duplicate_row_pct": dup_rows["percentage"],
+        "duplicate_row_count": dup_rows["count"],
+        "duplicate_column_count": len(dup_columns),
     }

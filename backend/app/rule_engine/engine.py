@@ -44,6 +44,8 @@ def evaluate_rules(column: str, effective_type: str, facts: dict) -> list[Recomm
     matched = []
 
     for rule in RULES:
+        if rule["applies_to"] == "dataset":
+            continue
         if rule["applies_to"] != effective_type and rule["applies_to"] != "any":
             continue
 
@@ -63,6 +65,43 @@ def evaluate_rules(column: str, effective_type: str, facts: dict) -> list[Recomm
                     category=rule["category"],
                     severity=rule["severity"],
                     column=column,
+                    recommendation=rule["recommendation"],
+                    reason=rule["reason"],
+                    advantages=rule.get("advantages", []),
+                    disadvantages=rule.get("disadvantages", []),
+                    alternatives=rule.get("alternatives", []),
+                    docs_url=rule.get("docs_url"),
+                )
+            )
+
+    return matched
+
+def evaluate_dataset_rules(facts: dict) -> list[Recommendation]:
+    """
+    Same matching logic as evaluate_rules, but for rules scoped to the
+    whole dataset (applies_to: dataset) rather than a single column —
+    e.g. duplicate rows/columns, where no one column is responsible.
+    The "column" field is set to a sentinel string since these
+    recommendations aren't about any specific column.
+    """
+    matched = []
+
+    for rule in RULES:
+        if rule["applies_to"] != "dataset":
+            continue
+
+        try:
+            condition_result = simple_eval(rule["condition"], names=facts)
+        except Exception:
+            continue
+
+        if condition_result:
+            matched.append(
+                Recommendation(
+                    rule_id=rule["id"],
+                    category=rule["category"],
+                    severity=rule["severity"],
+                    column="(entire dataset)",
                     recommendation=rule["recommendation"],
                     reason=rule["reason"],
                     advantages=rule.get("advantages", []),

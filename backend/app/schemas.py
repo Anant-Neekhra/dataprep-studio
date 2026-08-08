@@ -76,3 +76,15 @@ class ColumnTypeInfo(BaseModel):
     detected_type: str      # what auto-detection would say
     effective_type: str     # what's actually being used (override if present)
     is_overridden: bool
+
+class Recommendation(BaseModel):
+    rule_id: str
+    category: str
+    severity: Literal["low", "medium", "high"]
+    column: str
+    recommendation: str
+    reason: str
+    advantages: list[str]
+    disadvantages: list[str]
+    alternatives: list[str]
+    docs_url: str | None = None

@@ -11,11 +11,12 @@ ID_NAME_PATTERN = re.compile(r"(^id$|_id$|^id_|uuid|guid)", re.IGNORECASE)
 def looks_like_id_column(series: pd.Series, column_name: str) -> bool:
     """
     Heuristic ID detection — not perfect, which is exactly why we let the
-    user override it rather than trusting this blindly. Two signals:
+    user override it rather than trusting this blindly. Signals used:
       1. Name strongly suggests an identifier (e.g. "user_id", "uuid")
-      2. Values are unique (or near-unique) AND look sequential/random
-         rather than measuring anything — i.e. very high cardinality
-         relative to row count, on an int or string column.
+      2. Values are unique (or near-unique) relative to row count
+      3. Values look like single tokens (IDs), not natural language
+         (multi-word text) — this is what separates an ID column from a
+         near-unique free-text column like product reviews.
     """
     non_null = series.dropna()
     if len(non_null) == 0:
@@ -27,7 +28,21 @@ def looks_like_id_column(series: pd.Series, column_name: str) -> bool:
 
     is_int_or_string = pd.api.types.is_integer_dtype(series) or series.dtype == object
 
-    return is_int_or_string and near_unique and (name_suggests_id or cardinality_ratio == 1.0)
+    # Average word count — IDs are almost always single tokens
+    # ("CUST00231"), free text is almost always multi-word.
+    if series.dtype == object:
+        sample = non_null.astype(str).head(200)
+        avg_word_count = sample.str.split().str.len().mean()
+        looks_like_single_token = avg_word_count is not None and avg_word_count <= 1.5
+    else:
+        looks_like_single_token = True  # int columns are inherently single-token
+
+    return (
+        is_int_or_string
+        and near_unique
+        and looks_like_single_token
+        and (name_suggests_id or cardinality_ratio == 1.0)
+    )
 
 
 def classify_dtype(series: pd.Series, column_name: str | None = None) -> str:

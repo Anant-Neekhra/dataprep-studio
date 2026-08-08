@@ -3,15 +3,18 @@ import io
 import pandas as pd
 from fastapi import APIRouter, HTTPException, UploadFile
 
+from app.rule_engine.engine import evaluate_rules
+from app.rule_engine.facts import build_facts
 from app.schemas import (
     ColumnTypeInfo,
     DatasetOverview,
     DatasetProfile,
+    Recommendation,
     TypeOverrideRequest,
     UploadResponse,
 )
 from app.services.dataset_service import compute_overview, get_effective_type
-from app.services.profiling_service import compute_profile
+from app.services.profiling_service import compute_profile, profile_column
 from app.storage import dataset_store
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
@@ -122,3 +125,18 @@ def clear_column_type_override(dataset_id: str, column: str) -> ColumnTypeInfo:
         effective_type=effective,
         is_overridden=is_overridden,
     )
+
+@router.get("/{dataset_id}/recommendations", response_model=list[Recommendation])
+def get_recommendations(dataset_id: str) -> list[Recommendation]:
+    df = _get_df_or_404(dataset_id)
+    overrides = dataset_store.get_overrides(dataset_id)
+
+    all_recommendations = []
+    for col in df.columns:
+        _, effective_type, _ = get_effective_type(df[col], col, overrides)
+        profile = profile_column(df[col], col, effective_type)
+        facts = build_facts(profile)
+        recommendations = evaluate_rules(col, effective_type, facts)
+        all_recommendations.extend(recommendations)
+
+    return all_recommendations

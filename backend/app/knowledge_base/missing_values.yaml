@@ -112,3 +112,49 @@
   alternatives:
     - "Drop Column"
   docs_url: "https://scikit-learn.org/stable/modules/generated/sklearn.impute.SimpleImputer.html"
+
+- id: missing_low_text
+  category: missing_values
+  severity: low
+  applies_to: text
+  condition: "missing_pct > 0 and missing_pct <= 5"
+  recommendation: "Impute with a placeholder (e.g. 'Unknown'), or drop the affected rows"
+  reason: "A small amount of missing free-text data rarely affects analysis regardless of how it's handled."
+  advantages:
+    - "Simple and preserves row count"
+  disadvantages:
+    - "A placeholder value isn't real data, so use it only where the text column isn't critical"
+  alternatives:
+    - "Drop Rows"
+  docs_url: "https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.fillna.html"
+
+- id: missing_moderate_text
+  category: missing_values
+  severity: medium
+  applies_to: text
+  condition: "missing_pct > 5 and missing_pct <= 50"
+  recommendation: "Treat missing as its own category (e.g. 'Missing'/'Unknown'), or drop the column if not critical"
+  reason: "Free-text columns can't be meaningfully imputed with mean/median/mode the way numeric or low-cardinality categorical columns can — there's no statistically 'typical' text value."
+  advantages:
+    - "Preserves the row and signals explicitly that data was missing here"
+  disadvantages:
+    - "Does not recover any lost information"
+  alternatives:
+    - "Drop Rows"
+    - "Drop Column, if this text field isn't important to your analysis"
+  docs_url: "https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.fillna.html"
+
+- id: missing_high_text
+  category: missing_values
+  severity: high
+  applies_to: text
+  condition: "missing_pct > 50"
+  recommendation: "Consider dropping this column"
+  reason: "With over half the values missing, a free-text column is unlikely to carry enough consistent signal to be useful, and there's no reliable way to impute text data at this scale of missingness."
+  advantages:
+    - "Removes a column that's mostly empty and hard to use reliably"
+  disadvantages:
+    - "If the column is domain-critical (e.g. legal documents field), consider keeping it and treating missingness as informative instead of dropping"
+  alternatives:
+    - "Treat missing as its own category instead of dropping"
+  docs_url: "https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.drop.html"

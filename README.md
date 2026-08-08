@@ -82,3 +82,19 @@ App at `http://localhost:8080`
 - `/datasets/{id}/recommendations` now merges column-level and dataset-level recommendations into one list
 - No new frontend work required — the existing Recommendation Card page from Day 4 renders all of today's new rule types automatically, confirming the architecture decision to build that component generically was the right call
 - Verified: whitespace/case-inconsistency correctly flagged on a test categorical column, duplicate row detection confirmed on a dataset with repeated records
+
+### Day 6 — Missing Value Engine ("Preview → Apply" + "Why Not?" simulation)
+- `DatasetStore.update()` — allows a dataset's working DataFrame to be replaced after a transformation is applied
+- `services/imputation_service.py`: pure functions for mean/median/mode/constant/forward-fill/backward-fill/drop-rows strategies, kept side-effect-free (return new Series/DataFrames rather than mutating in place)
+- **Strategy validation**: `validate_strategy_for_column()` rejects numeric-only strategies (mean/median) on non-numeric columns with a clear message, instead of letting pandas throw a raw `TypeError` deep in the call stack
+- Three endpoints per column: `/impute/preview` (before/after stats + sample values, no mutation), `/impute/apply` (actually updates the stored dataset), `/impute/compare` (runs two strategies side by side on the same original data — powers the "Why Not?" feature)
+- All three endpoints properly catch `ValueError` and return clean `400` responses with actionable messages instead of crashing
+- Frontend Missing Value Engine page: column dropdown (populated from real column names, replacing an earlier free-text input that was error-prone), strategy picker, Preview/Apply buttons, and a "Why Not?" comparison panel showing two strategies' effects side by side on real data
+- Linked directly from Recommendation cards with `category == "missing_values"`
+
+**Bugs found and fixed during testing:**
+- `missing_values.yaml` had no rules for `applies_to: text` — a real dataset (Titanic) has a high-cardinality-but-not-unique text column (`Cabin`, 77% missing) that fell through the cracks between "categorical" and "numerical" rules. Added dedicated text-column missing-value rules.
+- Free-text column-name input was replaced with a dropdown populated from `/column-types`, eliminating a class of typo/empty-input bugs
+- Added `try/except` around all `.json()` calls on error responses in the frontend, so a malformed or empty error body shows a clean message instead of crashing the whole page
+- Confirmed that `uvicorn --reload` wipes the in-memory `DatasetStore` on every backend code change — a known limitation until Day 16's SQLite-backed History Manager
+- Verified end to end: previewed and applied `constant` imputation on `Cabin`, confirmed dataset-wide missing % dropped, confirmed the corresponding recommendation card disappeared from the Recommendations page after the fix

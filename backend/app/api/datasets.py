@@ -7,12 +7,17 @@ from app.rule_engine.engine import evaluate_dataset_rules, evaluate_rules
 from app.rule_engine.facts import build_dataset_facts, build_facts
 from app.schemas import (
     ColumnTypeInfo,
+    CompareStrategiesRequest,
+    CompareStrategiesResponse,
     DatasetOverview,
     DatasetProfile,
+    ImputePreviewResponse,
+    ImputeRequest,
     Recommendation,
     TypeOverrideRequest,
     UploadResponse,
 )
+from app.services.imputation_service import compare_strategies, impute_column_in_dataframe, preview_imputation
 from app.services.dataset_service import compute_overview, get_effective_type
 from app.services.profiling_service import compute_profile, profile_column
 from app.storage import dataset_store
@@ -146,3 +151,68 @@ def get_recommendations(dataset_id: str) -> list[Recommendation]:
     all_recommendations.extend(evaluate_dataset_rules(dataset_facts))
 
     return all_recommendations
+
+@router.post("/{dataset_id}/columns/{column}/impute/preview", response_model=ImputePreviewResponse)
+def preview_column_imputation(
+    dataset_id: str, column: str, body: ImputeRequest
+) -> ImputePreviewResponse:
+    df = _get_df_or_404(dataset_id)
+    if column not in df.columns:
+        raise HTTPException(status_code=404, detail=f"Column '{column}' not found.")
+
+    try:
+        result = preview_imputation(df, column, body.strategy, body.constant_value)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return ImputePreviewResponse(
+        column=column,
+        strategy=body.strategy,
+        before=result["before"],
+        after=result["after"],
+        sample_before=result["sample_before"],
+        sample_after=result["sample_after"],
+    )
+
+
+@router.post("/{dataset_id}/columns/{column}/impute/apply", response_model=DatasetOverview)
+def apply_column_imputation(
+    dataset_id: str, column: str, body: ImputeRequest
+) -> DatasetOverview:
+    df = _get_df_or_404(dataset_id)
+    if column not in df.columns:
+        raise HTTPException(status_code=404, detail=f"Column '{column}' not found.")
+
+    try:
+        new_df = impute_column_in_dataframe(df, column, body.strategy, body.constant_value)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    dataset_store.update(dataset_id, new_df)
+
+    filename = dataset_store.get_filename(dataset_id)
+    overrides = dataset_store.get_overrides(dataset_id)
+    return compute_overview(dataset_id=dataset_id, filename=filename, df=new_df, overrides=overrides)
+
+
+@router.post("/{dataset_id}/columns/{column}/impute/compare", response_model=CompareStrategiesResponse)
+def compare_imputation_strategies(
+    dataset_id: str, column: str, body: CompareStrategiesRequest
+) -> CompareStrategiesResponse:
+    df = _get_df_or_404(dataset_id)
+    if column not in df.columns:
+        raise HTTPException(status_code=404, detail=f"Column '{column}' not found.")
+
+    try:
+        result = compare_strategies(df, column, body.strategy_a, body.strategy_b)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return CompareStrategiesResponse(
+        column=column,
+        strategy_a=body.strategy_a,
+        strategy_b=body.strategy_b,
+        before=result["before"],
+        after_a=result["after_a"],
+        after_b=result["after_b"],
+    )

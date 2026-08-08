@@ -44,5 +44,11 @@ class DatasetStore:
         if entry:
             entry["type_overrides"].pop(column, None)
 
+    def update(self, dataset_id: str, df: pd.DataFrame) -> None:
+        entry = self._datasets.get(dataset_id)
+        if entry is None:
+            raise KeyError(f"Dataset {dataset_id} not found")
+        entry["df"] = df
+
 
 dataset_store = DatasetStore()

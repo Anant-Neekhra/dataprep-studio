@@ -48,9 +48,6 @@ async def main_page():
 
             ui.link("Go to Upload Page →", "/upload").classes("mt-4")
 
-
-ui.run(title="DataPrep Studio", host="0.0.0.0", port=8080, reload=True)
-
 @ui.page("/upload")
 async def upload_page():
     with ui.column().classes("items-center w-full mt-10 gap-4"):
@@ -298,4 +295,145 @@ async def recommendations_page(dataset_id: str):
                                     "text-sm mt-2 text-blue-600"
                                 )
 
+                        if rec["category"] == "missing_values":
+                            ui.link(
+                                "Go handle this →", f"/missing-values/{dataset_id}"
+                            ).classes("text-sm text-blue-600 mt-2")
+
         ui.timer(0.1, load_recommendations, once=True)
+
+IMPUTE_STRATEGIES = ["mean", "median", "mode", "constant", "forward_fill", "backward_fill", "drop_rows"]
+
+
+@ui.page("/missing-values/{dataset_id}")
+async def missing_values_page(dataset_id: str):
+    with ui.column().classes("items-center w-full mt-10 gap-4"):
+        ui.label("Missing Value Engine").classes("text-2xl font-bold")
+        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+            "text-sm text-gray-400"
+        )
+
+        column_select = ui.select([], label="Column").classes("w-80")
+        strategy_select = ui.select(IMPUTE_STRATEGIES, value="median", label="Strategy").classes(
+            "w-80"
+        )
+
+        async def load_columns():
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(f"{BACKEND_URL}/datasets/{dataset_id}/column-types")
+                if response.status_code == 200:
+                    column_names = [c["column"] for c in response.json()]
+                    column_select.set_options(column_names)
+                    if column_names:
+                        column_select.set_value(column_names[0])
+
+        ui.timer(0.1, load_columns, once=True)
+        constant_input = ui.input("Constant value (only for 'constant' strategy)").classes("w-80")
+
+        result_container = ui.column().classes("w-full max-w-2xl gap-3")
+
+        def stats_row(label: str, stats: dict):
+            with ui.row().classes("gap-6"):
+                with ui.column().classes("gap-0"):
+                    ui.label(label).classes("text-xs text-gray-400")
+                    ui.label(f"Mean: {stats.get('mean')}").classes("text-sm")
+                    ui.label(f"Median: {stats.get('median')}").classes("text-sm")
+                    ui.label(f"Missing: {stats['missing_count']} / {stats['row_count']}").classes(
+                        "text-sm"
+                    )
+
+        async def do_preview():
+            result_container.clear()
+            body = {"strategy": strategy_select.value, "constant_value": constant_input.value or None}
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.post(
+                    f"{BACKEND_URL}/datasets/{dataset_id}/columns/{column_select.value}/impute/preview",
+                    json=body,
+                )
+                if response.status_code != 200:
+                    try:
+                        error_detail = response.json().get("detail", "Unknown error")
+                    except Exception:
+                        error_detail = f"Request failed ({response.status_code})"
+                    with result_container:
+                        ui.label(f"❌ {error_detail}").classes("text-red-600")
+                    return
+                preview = response.json()
+
+            with result_container:
+                with ui.card().classes("w-full"):
+                    ui.label(f"Preview — {strategy_select.value} on '{column_select.value}'").classes(
+                        "font-semibold"
+                    )
+                    with ui.row().classes("gap-8 mt-2"):
+                        stats_row("Before", preview["before"])
+                        stats_row("After", preview["after"])
+                    ui.label(f"Sample before: {preview['sample_before']}").classes(
+                        "text-xs text-gray-500 mt-2"
+                    )
+                    ui.label(f"Sample after: {preview['sample_after']}").classes(
+                        "text-xs text-gray-500"
+                    )
+
+        async def do_apply():
+            body = {"strategy": strategy_select.value, "constant_value": constant_input.value or None}
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.post(
+                    f"{BACKEND_URL}/datasets/{dataset_id}/columns/{column_select.value}/impute/apply",
+                    json=body,
+                )
+                if response.status_code != 200:
+                    try:
+                        error_detail = response.json().get("detail", "Unknown error")
+                    except Exception:
+                        error_detail = f"Request failed ({response.status_code})"
+                    with result_container:
+                        ui.label(f"❌ {error_detail}").classes("text-red-600")
+                    return
+                overview = response.json()
+            ui.notify(
+                f"Applied. Dataset now has {overview['missing_percentage']}% missing overall.",
+                type="positive",
+            )
+
+        with ui.row().classes("gap-2"):
+            ui.button("Preview", on_click=do_preview)
+            ui.button("Apply", on_click=do_apply).props("color=positive")
+
+        ui.separator().classes("my-4")
+
+        ui.label('"Why Not?" — Compare Two Strategies').classes("text-lg font-semibold")
+        with ui.row().classes("gap-2"):
+            strategy_a_select = ui.select(IMPUTE_STRATEGIES, value="mean", label="Strategy A")
+            strategy_b_select = ui.select(IMPUTE_STRATEGIES, value="median", label="Strategy B")
+
+        compare_container = ui.column().classes("w-full max-w-2xl gap-3")
+
+        async def do_compare():
+            compare_container.clear()
+            body = {"strategy_a": strategy_a_select.value, "strategy_b": strategy_b_select.value}
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.post(
+                    f"{BACKEND_URL}/datasets/{dataset_id}/columns/{column_select.value}/impute/compare",
+                    json=body,
+                )
+                if response.status_code != 200:
+                    try:
+                        error_detail = response.json().get("detail", "Unknown error")
+                    except Exception:
+                        error_detail = f"Request failed ({response.status_code})"
+                    with compare_container:
+                        ui.label(f"❌ {error_detail}").classes("text-red-600")
+                    return
+                comparison = response.json()
+
+            with compare_container:
+                with ui.card().classes("w-full"):
+                    with ui.row().classes("gap-8"):
+                        stats_row("Before", comparison["before"])
+                        stats_row(f"After {strategy_a_select.value}", comparison["after_a"])
+                        stats_row(f"After {strategy_b_select.value}", comparison["after_b"])
+
+        ui.button("Compare", on_click=do_compare)
+
+ui.run(title="DataPrep Studio", host="0.0.0.0", port=8080, reload=True)

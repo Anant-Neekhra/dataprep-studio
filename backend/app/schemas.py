@@ -88,3 +88,40 @@ class Recommendation(BaseModel):
     disadvantages: list[str]
     alternatives: list[str]
     docs_url: str | None = None
+
+class ImputeRequest(BaseModel):
+    strategy: Literal["mean", "median", "mode", "constant", "forward_fill", "backward_fill", "drop_rows"]
+    constant_value: str | None = None
+
+
+class ColumnStatsSummary(BaseModel):
+    """A lightweight before/after snapshot — not the full ColumnProfile,
+    just the numbers that matter for judging an imputation's effect."""
+    mean: float | None = None
+    median: float | None = None
+    std: float | None = None
+    missing_count: int
+    row_count: int
+
+
+class ImputePreviewResponse(BaseModel):
+    column: str
+    strategy: str
+    before: ColumnStatsSummary
+    after: ColumnStatsSummary
+    sample_before: list  # a few original values, for visual comparison
+    sample_after: list   # same rows, after imputation
+
+
+class CompareStrategiesRequest(BaseModel):
+    strategy_a: Literal["mean", "median", "mode", "constant", "forward_fill", "backward_fill", "drop_rows"]
+    strategy_b: Literal["mean", "median", "mode", "constant", "forward_fill", "backward_fill", "drop_rows"]
+
+
+class CompareStrategiesResponse(BaseModel):
+    column: str
+    strategy_a: str
+    strategy_b: str
+    before: ColumnStatsSummary
+    after_a: ColumnStatsSummary
+    after_b: ColumnStatsSummary

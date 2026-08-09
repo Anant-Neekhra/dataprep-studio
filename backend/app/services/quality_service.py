@@ -62,3 +62,21 @@ def detect_duplicate_columns(df: pd.DataFrame) -> list[tuple[str, str]]:
             if df[col_a].equals(df[col_b]):
                 duplicate_pairs.append((col_a, col_b))
     return duplicate_pairs
+
+def remove_duplicate_rows(df: pd.DataFrame, keep: str = "first") -> pd.DataFrame:
+    """
+    Returns a NEW DataFrame with exact duplicate rows removed.
+    keep: "first" keeps the first occurrence, "last" keeps the last.
+    """
+    return df.drop_duplicates(keep=keep).reset_index(drop=True)
+
+
+def remove_duplicate_columns(df: pd.DataFrame, columns_to_drop: list[str]) -> pd.DataFrame:
+    """
+    Returns a NEW DataFrame with the specified columns removed. Used
+    after detect_duplicate_columns identifies which columns are exact
+    duplicates of another — the caller decides which one of each pair
+    to actually drop (we don't guess, since the "right" one to keep
+    might depend on naming/domain knowledge the tool doesn't have).
+    """
+    return df.drop(columns=columns_to_drop)

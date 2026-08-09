@@ -300,6 +300,11 @@ async def recommendations_page(dataset_id: str):
                                 "Go handle this →", f"/missing-values/{dataset_id}"
                             ).classes("text-sm text-blue-600 mt-2")
 
+                        if rec["category"] == "data_quality" and "duplicate" in rec["rule_id"]:
+                            ui.link(
+                                "Go handle this →", f"/duplicates/{dataset_id}"
+                            ).classes("text-sm text-blue-600 mt-2")
+
         ui.timer(0.1, load_recommendations, once=True)
 
 IMPUTE_STRATEGIES = ["mean", "median", "mode", "constant", "forward_fill", "backward_fill", "drop_rows"]
@@ -437,3 +442,114 @@ async def missing_values_page(dataset_id: str):
         ui.button("Compare", on_click=do_compare)
 
 ui.run(title="DataPrep Studio", host="0.0.0.0", port=8080, reload=True)
+
+@ui.page("/duplicates/{dataset_id}")
+async def duplicates_page(dataset_id: str):
+    with ui.column().classes("items-center w-full mt-10 gap-4"):
+        ui.label("Duplicate Analysis").classes("text-2xl font-bold")
+        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+            "text-sm text-gray-400"
+        )
+
+        # --- Duplicate Rows ---
+        ui.label("Duplicate Rows").classes("text-lg font-semibold mt-4")
+        rows_container = ui.column().classes("w-full max-w-2xl gap-2")
+
+        async def load_row_duplicates():
+            rows_container.clear()
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(
+                    f"{BACKEND_URL}/datasets/{dataset_id}/duplicates/rows/preview"
+                )
+                response.raise_for_status()
+                preview = response.json()
+
+            with rows_container:
+                with ui.card().classes("w-full"):
+                    ui.label(
+                        f"{preview['duplicate_count']} duplicate rows "
+                        f"({preview['duplicate_percentage']}%) — "
+                        f"{preview['rows_after_removal']} rows would remain"
+                    ).classes("text-sm")
+
+                    if preview["sample_duplicate_rows"]:
+                        ui.label("Sample duplicate rows:").classes("text-xs text-gray-400 mt-2")
+                        for row in preview["sample_duplicate_rows"]:
+                            ui.label(str(row)).classes("text-xs text-gray-600")
+
+                    keep_select = ui.select(["first", "last"], value="first", label="Keep")
+
+                    async def remove_row_duplicates():
+                        async with httpx.AsyncClient(timeout=15.0) as client:
+                            response = await client.post(
+                                f"{BACKEND_URL}/datasets/{dataset_id}/duplicates/rows/apply",
+                                json={"keep": keep_select.value},
+                            )
+                            if response.status_code != 200:
+                                try:
+                                    detail = response.json().get("detail", "Unknown error")
+                                except Exception:
+                                    detail = f"Request failed ({response.status_code})"
+                                ui.notify(detail, type="negative")
+                                return
+                            overview = response.json()
+                        ui.notify(
+                            f"Removed. Dataset now has {overview['duplicate_rows']} duplicate rows.",
+                            type="positive",
+                        )
+                        await load_row_duplicates()
+
+                    ui.button("Remove Duplicate Rows", on_click=remove_row_duplicates).props(
+                        "color=positive"
+                    ).classes("mt-2")
+
+        ui.timer(0.1, load_row_duplicates, once=True)
+
+        ui.separator().classes("my-4")
+
+        # --- Duplicate Columns ---
+        ui.label("Duplicate Columns").classes("text-lg font-semibold")
+        columns_container = ui.column().classes("w-full max-w-2xl gap-2")
+
+        async def load_column_duplicates():
+            columns_container.clear()
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(
+                    f"{BACKEND_URL}/datasets/{dataset_id}/duplicates/columns/preview"
+                )
+                response.raise_for_status()
+                preview = response.json()
+
+            with columns_container:
+                if not preview["pairs"]:
+                    ui.label("No duplicate columns found.").classes("text-sm text-gray-500")
+                    return
+
+                for pair in preview["pairs"]:
+                    with ui.card().classes("w-full"):
+                        ui.label(
+                            f"'{pair['column_a']}' and '{pair['column_b']}' are identical"
+                        ).classes("text-sm")
+
+                        async def drop_one(col_to_drop=pair["column_b"]):
+                            async with httpx.AsyncClient(timeout=15.0) as client:
+                                response = await client.post(
+                                    f"{BACKEND_URL}/datasets/{dataset_id}/duplicates/columns/apply",
+                                    json={"columns_to_drop": [col_to_drop]},
+                                )
+                                if response.status_code != 200:
+                                    try:
+                                        detail = response.json().get("detail", "Unknown error")
+                                    except Exception:
+                                        detail = f"Request failed ({response.status_code})"
+                                    ui.notify(detail, type="negative")
+                                    return
+                            ui.notify(f"Dropped '{col_to_drop}'", type="positive")
+                            await load_column_duplicates()
+
+                        ui.button(
+                            f"Drop '{pair['column_b']}' (keep '{pair['column_a']}')",
+                            on_click=drop_one,
+                        ).props("dense")
+
+        ui.timer(0.1, load_column_duplicates, once=True)

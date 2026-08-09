@@ -125,3 +125,26 @@ class CompareStrategiesResponse(BaseModel):
     before: ColumnStatsSummary
     after_a: ColumnStatsSummary
     after_b: ColumnStatsSummary
+
+class DuplicateRowsPreview(BaseModel):
+    duplicate_count: int
+    duplicate_percentage: float
+    rows_after_removal: int
+    sample_duplicate_rows: list[dict]
+
+
+class RemoveDuplicateRowsRequest(BaseModel):
+    keep: Literal["first", "last"] = "first"
+
+
+class DuplicateColumnPair(BaseModel):
+    column_a: str
+    column_b: str
+
+
+class DuplicateColumnsPreview(BaseModel):
+    pairs: list[DuplicateColumnPair]
+
+
+class RemoveDuplicateColumnsRequest(BaseModel):
+    columns_to_drop: list[str]

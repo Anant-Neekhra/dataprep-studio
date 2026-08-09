@@ -98,3 +98,10 @@ App at `http://localhost:8080`
 - Added `try/except` around all `.json()` calls on error responses in the frontend, so a malformed or empty error body shows a clean message instead of crashing the whole page
 - Confirmed that `uvicorn --reload` wipes the in-memory `DatasetStore` on every backend code change — a known limitation until Day 16's SQLite-backed History Manager
 - Verified end to end: previewed and applied `constant` imputation on `Cabin`, confirmed dataset-wide missing % dropped, confirmed the corresponding recommendation card disappeared from the Recommendations page after the fix
+
+### Day 7 — Duplicate Analysis (dedicated apply flow)
+- `services/quality_service.py` extended: `remove_duplicate_rows()` (keep first/last), `remove_duplicate_columns()` (explicit column list — the tool never guesses which of two identical columns to drop, that's left to the user)
+- Four new endpoints: `GET/POST .../duplicates/rows/preview|apply`, `GET/POST .../duplicates/columns/preview|apply`
+- Row preview shows duplicate count/percentage, projected row count after removal, and a sample of the actual duplicate rows
+- Column preview lists exact-duplicate column pairs; apply takes an explicit list of which columns to drop
+- Frontend Duplicates

@@ -11,9 +11,14 @@ from app.schemas import (
     CompareStrategiesResponse,
     DatasetOverview,
     DatasetProfile,
+    DuplicateColumnPair,
+    DuplicateColumnsPreview,
+    DuplicateRowsPreview,
     ImputePreviewResponse,
     ImputeRequest,
     Recommendation,
+    RemoveDuplicateColumnsRequest,
+    RemoveDuplicateRowsRequest,
     TypeOverrideRequest,
     UploadResponse,
 )
@@ -21,6 +26,12 @@ from app.services.imputation_service import compare_strategies, impute_column_in
 from app.services.dataset_service import compute_overview, get_effective_type
 from app.services.profiling_service import compute_profile, profile_column
 from app.storage import dataset_store
+from app.services.quality_service import (
+    detect_duplicate_columns,
+    detect_duplicate_rows,
+    remove_duplicate_columns,
+    remove_duplicate_rows,
+)
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -216,3 +227,58 @@ def compare_imputation_strategies(
         after_a=result["after_a"],
         after_b=result["after_b"],
     )
+
+@router.get("/{dataset_id}/duplicates/rows/preview", response_model=DuplicateRowsPreview)
+def preview_duplicate_rows(dataset_id: str) -> DuplicateRowsPreview:
+    df = _get_df_or_404(dataset_id)
+    dup_info = detect_duplicate_rows(df)
+
+    duplicate_rows = df[df.duplicated(keep="first")]
+    sample = duplicate_rows.head(5).to_dict(orient="records")
+
+    return DuplicateRowsPreview(
+        duplicate_count=dup_info["count"],
+        duplicate_percentage=dup_info["percentage"],
+        rows_after_removal=len(df) - dup_info["count"],
+        sample_duplicate_rows=sample,
+    )
+
+
+@router.post("/{dataset_id}/duplicates/rows/apply", response_model=DatasetOverview)
+def apply_remove_duplicate_rows(
+    dataset_id: str, body: RemoveDuplicateRowsRequest
+) -> DatasetOverview:
+    df = _get_df_or_404(dataset_id)
+    new_df = remove_duplicate_rows(df, keep=body.keep)
+    dataset_store.update(dataset_id, new_df)
+
+    filename = dataset_store.get_filename(dataset_id)
+    overrides = dataset_store.get_overrides(dataset_id)
+    return compute_overview(dataset_id=dataset_id, filename=filename, df=new_df, overrides=overrides)
+
+
+@router.get("/{dataset_id}/duplicates/columns/preview", response_model=DuplicateColumnsPreview)
+def preview_duplicate_columns(dataset_id: str) -> DuplicateColumnsPreview:
+    df = _get_df_or_404(dataset_id)
+    pairs = detect_duplicate_columns(df)
+    return DuplicateColumnsPreview(
+        pairs=[DuplicateColumnPair(column_a=a, column_b=b) for a, b in pairs]
+    )
+
+
+@router.post("/{dataset_id}/duplicates/columns/apply", response_model=DatasetOverview)
+def apply_remove_duplicate_columns(
+    dataset_id: str, body: RemoveDuplicateColumnsRequest
+) -> DatasetOverview:
+    df = _get_df_or_404(dataset_id)
+
+    missing = [c for c in body.columns_to_drop if c not in df.columns]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Column(s) not found: {missing}")
+
+    new_df = remove_duplicate_columns(df, body.columns_to_drop)
+    dataset_store.update(dataset_id, new_df)
+
+    filename = dataset_store.get_filename(dataset_id)
+    overrides = dataset_store.get_overrides(dataset_id)
+    return compute_overview(dataset_id=dataset_id, filename=filename, df=new_df, overrides=overrides)

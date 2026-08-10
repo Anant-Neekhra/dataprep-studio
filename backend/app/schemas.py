@@ -193,3 +193,16 @@ class TransformPreview(BaseModel):
     after_skewness: float | None
     before_histogram: HistogramData
     after_histogram: HistogramData
+
+class OutlierDetectionResult(BaseModel):
+    column: str
+    method: str
+    outlier_count: int
+    outlier_percentage: float
+    outlier_values: list
+    outlier_indices: list[int]
+
+
+class OutlierTreatmentRequest(BaseModel):
+    method: Literal["iqr", "zscore", "modified_zscore"]
+    action: Literal["remove", "cap"]

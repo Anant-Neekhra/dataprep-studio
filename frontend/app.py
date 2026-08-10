@@ -338,6 +338,11 @@ async def recommendations_page(dataset_id: str):
                                 "Go handle this →", f"/distribution/{dataset_id}"
                             ).classes("text-sm text-blue-600 mt-2")
 
+                        if rec["category"] == "outliers":
+                            ui.link(
+                                "Go handle this →", f"/outliers/{dataset_id}"
+                            ).classes("text-sm text-blue-600 mt-2")
+
         ui.timer(0.1, load_recommendations, once=True)
 
 IMPUTE_STRATEGIES = ["mean", "median", "mode", "constant", "forward_fill", "backward_fill", "drop_rows"]
@@ -807,3 +812,98 @@ async def distribution_page(dataset_id: str):
         with ui.row().classes("gap-2"):
             ui.button("Preview Transform", on_click=do_transform_preview)
             ui.button("Apply Transform", on_click=do_transform_apply).props("color=positive")
+
+OUTLIER_METHODS_LIST = ["iqr", "zscore", "modified_zscore"]
+
+
+@ui.page("/outliers/{dataset_id}")
+async def outliers_page(dataset_id: str):
+    with ui.column().classes("items-center w-full mt-10 gap-4"):
+        ui.label("Outlier Analysis").classes("text-2xl font-bold")
+        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+            "text-sm text-gray-400"
+        )
+
+        column_select = ui.select([], label="Numeric Column").classes("w-80")
+        method_select = ui.select(OUTLIER_METHODS_LIST, value="iqr", label="Detection Method").classes(
+            "w-80"
+        )
+
+        async def load_numeric_columns():
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(f"{BACKEND_URL}/datasets/{dataset_id}/column-types")
+                if response.status_code == 200:
+                    names = [
+                        c["column"] for c in response.json() if c["effective_type"] == "numerical"
+                    ]
+                    column_select.set_options(names)
+                    if names:
+                        column_select.set_value(names[0])
+
+        ui.timer(0.1, load_numeric_columns, once=True)
+
+        result_container = ui.column().classes("w-full max-w-2xl gap-3")
+
+        async def load_outliers():
+            result_container.clear()
+            if not column_select.value:
+                return
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(
+                    f"{BACKEND_URL}/datasets/{dataset_id}/columns/{column_select.value}/outliers",
+                    params={"method": method_select.value},
+                )
+                if response.status_code != 200:
+                    try:
+                        detail = response.json().get("detail", "Unknown error")
+                    except Exception:
+                        detail = f"Request failed ({response.status_code})"
+                    with result_container:
+                        ui.label(f"❌ {detail}").classes("text-red-600")
+                    return
+                result = response.json()
+
+            with result_container:
+                with ui.card().classes("w-full"):
+                    ui.label(
+                        f"{result['outlier_count']} outliers ({result['outlier_percentage']}%) "
+                        f"using {result['method']}"
+                    ).classes("font-semibold")
+                    if result["outlier_values"]:
+                        ui.label(f"Sample values: {result['outlier_values'][:10]}").classes(
+                            "text-xs text-gray-500 mt-2"
+                        )
+
+                    with ui.row().classes("gap-2 mt-3"):
+                        async def remove_outliers_action():
+                            await treat_outliers("remove")
+
+                        async def cap_outliers_action():
+                            await treat_outliers("cap")
+
+                        async def treat_outliers(action: str):
+                            async with httpx.AsyncClient(timeout=15.0) as client:
+                                response = await client.post(
+                                    f"{BACKEND_URL}/datasets/{dataset_id}/columns/{column_select.value}/outliers/apply",
+                                    json={"method": method_select.value, "action": action},
+                                )
+                                if response.status_code != 200:
+                                    try:
+                                        detail = response.json().get("detail", "Unknown error")
+                                    except Exception:
+                                        detail = f"Request failed ({response.status_code})"
+                                    ui.notify(detail, type="negative")
+                                    return
+                            ui.notify(f"Outliers {action}d.", type="positive")
+                            await load_outliers()
+
+                        ui.button("Cap Outliers", on_click=cap_outliers_action).props(
+                            "color=positive"
+                        )
+                        ui.button("Remove Outlier Rows", on_click=remove_outliers_action).props(
+                            "color=negative"
+                        )
+
+        column_select.on("update:model-value", lambda: load_outliers())
+        method_select.on("update:model-value", lambda: load_outliers())
+        ui.timer(0.5, load_outliers, once=True)

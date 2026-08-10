@@ -12,7 +12,7 @@ from app.services.datatype_service import (
     detect_datetime_convertible,
     detect_int_convertible,
 )
-
+from app.services.outlier_service import detect_outliers_iqr
 
 def build_facts(profile: ColumnProfile, series: pd.Series | None = None) -> dict:
     facts = {
@@ -37,6 +37,7 @@ def build_facts(profile: ColumnProfile, series: pd.Series | None = None) -> dict
         "is_datetime_convertible": False,
         "is_int_convertible": False,
         "is_category_beneficial": False,
+        "outlier_pct": 0.0,
     }
 
     if series is not None:
@@ -49,6 +50,11 @@ def build_facts(profile: ColumnProfile, series: pd.Series | None = None) -> dict
         facts["is_category_beneficial"] = detect_category_dtype_beneficial(
             series, profile.cardinality_ratio
         )
+        if pd.api.types.is_numeric_dtype(series):
+            non_null = series.dropna()
+            if len(non_null) > 0:
+                mask = detect_outliers_iqr(non_null)
+                facts["outlier_pct"] = round((mask.sum() / len(non_null)) * 100, 2)
 
     return facts
 

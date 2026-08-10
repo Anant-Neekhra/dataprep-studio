@@ -4,6 +4,7 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException, UploadFile
 from scipy.stats import kurtosis as scipy_stats_kurtosis
 from scipy.stats import skew as scipy_stats_skew
+from typing import Literal
 
 from app.rule_engine.engine import evaluate_dataset_rules, evaluate_rules
 from app.rule_engine.facts import build_dataset_facts, build_facts
@@ -29,7 +30,9 @@ from app.schemas import (
     HistogramData, 
     NormalityTestResult, 
     TransformPreview, 
-    TransformRequest
+    TransformRequest,
+    OutlierDetectionResult, 
+    OutlierTreatmentRequest
 )
 from app.services.imputation_service import compare_strategies, impute_column_in_dataframe, preview_imputation
 from app.services.dataset_service import compute_overview, get_effective_type, drop_column
@@ -47,6 +50,7 @@ from app.services.distribution_service import (
     compute_histogram_bins,
     normality_test,
 )
+from app.services.outlier_service import cap_outliers, detect_outliers, remove_outliers
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -423,6 +427,43 @@ def delete_column(dataset_id: str, column: str) -> DatasetOverview:
     # don't linger and cause confusion if a future column happens to
     # share the same name.
     dataset_store.clear_override(dataset_id, column)
+
+    filename = dataset_store.get_filename(dataset_id)
+    overrides = dataset_store.get_overrides(dataset_id)
+    return compute_overview(dataset_id=dataset_id, filename=filename, df=new_df, overrides=overrides)
+
+@router.get("/{dataset_id}/columns/{column}/outliers", response_model=OutlierDetectionResult)
+def get_column_outliers(
+    dataset_id: str, column: str, method: Literal["iqr", "zscore", "modified_zscore"] = "iqr"
+) -> OutlierDetectionResult:
+    df = _get_df_or_404(dataset_id)
+    if column not in df.columns:
+        raise HTTPException(status_code=404, detail=f"Column '{column}' not found.")
+
+    if not pd.api.types.is_numeric_dtype(df[column]):
+        raise HTTPException(status_code=400, detail="Outlier detection requires a numeric column.")
+
+    result = detect_outliers(df[column], method)
+    return OutlierDetectionResult(column=column, method=method, **result)
+
+
+@router.post("/{dataset_id}/columns/{column}/outliers/apply", response_model=DatasetOverview)
+def apply_outlier_treatment(
+    dataset_id: str, column: str, body: OutlierTreatmentRequest
+) -> DatasetOverview:
+    df = _get_df_or_404(dataset_id)
+    if column not in df.columns:
+        raise HTTPException(status_code=404, detail=f"Column '{column}' not found.")
+
+    if not pd.api.types.is_numeric_dtype(df[column]):
+        raise HTTPException(status_code=400, detail="Outlier treatment requires a numeric column.")
+
+    if body.action == "remove":
+        new_df = remove_outliers(df, column, body.method)
+    else:
+        new_df = cap_outliers(df, column, body.method)
+
+    dataset_store.update(dataset_id, new_df)
 
     filename = dataset_store.get_filename(dataset_id)
     overrides = dataset_store.get_overrides(dataset_id)

@@ -1,0 +1,34 @@
+- id: moderate_outliers
+  category: outliers
+  severity: medium
+  applies_to: numerical
+  condition: "outlier_pct > 1 and outlier_pct <= 5"
+  recommendation: "Review outliers using the IQR method"
+  reason: "Between 1-5% of values in this column are statistical outliers (beyond 1.5x the interquartile range). Worth reviewing whether these are genuine extreme values or data entry errors."
+  advantages:
+    - "IQR is robust to skewed data, unlike methods based on mean/std"
+    - "Reviewing before acting avoids accidentally removing legitimate rare events"
+  disadvantages:
+    - "Some 'outliers' may be genuine and important (e.g. fraud cases, rare but real measurements)"
+  alternatives:
+    - "Z-score method (best for roughly normal data)"
+    - "Modified Z-score (robust alternative to Z-score)"
+    - "Cap instead of remove, to preserve row count"
+  docs_url: "https://en.wikipedia.org/wiki/Interquartile_range"
+
+- id: significant_outliers
+  category: outliers
+  severity: high
+  applies_to: numerical
+  condition: "outlier_pct > 5"
+  recommendation: "Review and treat outliers using the IQR method"
+  reason: "Over 5% of values in this column are statistical outliers. This is high enough to meaningfully skew means, standard deviations, and any model sensitive to extreme values."
+  advantages:
+    - "Capping preserves all rows while limiting the influence of extreme values"
+    - "Removing outliers entirely can improve model performance if they're genuine noise/errors"
+  disadvantages:
+    - "At this frequency, outliers might indicate a genuine subpopulation rather than noise — investigate before removing"
+  alternatives:
+    - "Modified Z-score (robust to the outliers' own influence on the statistics)"
+    - "Cap (winsorize) instead of removing, if row count matters for other columns"
+  docs_url: "https://en.wikipedia.org/wiki/Interquartile_range"

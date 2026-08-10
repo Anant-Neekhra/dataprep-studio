@@ -7,14 +7,14 @@ from app.services.quality_service import (
     is_constant_column,
     is_low_variance_column,
 )
+from app.services.datatype_service import (
+    detect_category_dtype_beneficial,
+    detect_datetime_convertible,
+    detect_int_convertible,
+)
 
 
 def build_facts(profile: ColumnProfile, series: pd.Series | None = None) -> dict:
-    """
-    Converts a ColumnProfile (+ optionally the raw series, for quality
-    checks that need actual values rather than just precomputed stats)
-    into a flat dict of values YAML rule conditions can reference.
-    """
     facts = {
         "missing_pct": profile.missing_percentage,
         "missing_count": profile.missing_count,
@@ -30,12 +30,13 @@ def build_facts(profile: ColumnProfile, series: pd.Series | None = None) -> dict
         "range": profile.range or 0,
         "skewness": profile.skewness or 0,
         "kurtosis": profile.kurtosis or 0,
-        # Quality signals default to False if we don't have the raw
-        # series (facts should still be usable without it).
         "has_whitespace": False,
         "has_case_inconsistency": False,
         "is_constant": False,
         "is_low_variance": False,
+        "is_datetime_convertible": False,
+        "is_int_convertible": False,
+        "is_category_beneficial": False,
     }
 
     if series is not None:
@@ -43,6 +44,11 @@ def build_facts(profile: ColumnProfile, series: pd.Series | None = None) -> dict
         facts["has_case_inconsistency"] = has_case_inconsistency(series)
         facts["is_constant"] = is_constant_column(series)
         facts["is_low_variance"] = is_low_variance_column(series, profile.cardinality_ratio)
+        facts["is_datetime_convertible"] = detect_datetime_convertible(series)
+        facts["is_int_convertible"] = detect_int_convertible(series)
+        facts["is_category_beneficial"] = detect_category_dtype_beneficial(
+            series, profile.cardinality_ratio
+        )
 
     return facts
 

@@ -148,3 +148,17 @@ class DuplicateColumnsPreview(BaseModel):
 
 class RemoveDuplicateColumnsRequest(BaseModel):
     columns_to_drop: list[str]
+
+class DtypeConversionRequest(BaseModel):
+    target_type: Literal["datetime", "integer", "category", "float", "string"]
+
+
+class DtypeConversionPreview(BaseModel):
+    column: str
+    before_dtype: str
+    after_dtype: str
+    before_missing: int
+    after_missing: int
+    newly_invalid_count: int
+    sample_before: list
+    sample_after: list

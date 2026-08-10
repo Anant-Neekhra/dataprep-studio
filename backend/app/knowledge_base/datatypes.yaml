@@ -1,0 +1,63 @@
+- id: object_to_datetime
+  category: datatype
+  severity: medium
+  applies_to: text
+  condition: "is_datetime_convertible == True"
+  recommendation: "Convert to datetime"
+  reason: "This column's values look like dates but are stored as plain text. As text, dates can't be sorted chronologically, filtered by date range, or used to extract features like month/day-of-week."
+  advantages:
+    - "Enables chronological sorting and date-range filtering"
+    - "Unlocks date-based feature engineering (extract year, month, day of week)"
+  disadvantages:
+    - "A handful of malformed entries may become missing values (NaT) after conversion — check the missing value tools afterward"
+  alternatives:
+    - "Leave as text if the values aren't actually meant to represent dates"
+  docs_url: "https://pandas.pydata.org/docs/reference/api/pandas.to_datetime.html"
+
+- id: object_to_datetime_categorical
+  category: datatype
+  severity: medium
+  applies_to: categorical
+  condition: "is_datetime_convertible == True"
+  recommendation: "Convert to datetime"
+  reason: "This column's values look like dates but are stored as plain text/categories. As text, dates can't be sorted chronologically, filtered by date range, or used to extract features like month/day-of-week."
+  advantages:
+    - "Enables chronological sorting and date-range filtering"
+    - "Unlocks date-based feature engineering (extract year, month, day of week)"
+  disadvantages:
+    - "A handful of malformed entries may become missing values (NaT) after conversion — check the missing value tools afterward"
+  alternatives:
+    - "Leave as text if the values aren't actually meant to represent dates"
+  docs_url: "https://pandas.pydata.org/docs/reference/api/pandas.to_datetime.html"
+
+- id: float_to_int
+  category: datatype
+  severity: low
+  applies_to: numerical
+  condition: "is_int_convertible == True"
+  recommendation: "Convert to integer"
+  reason: "Every value in this column is a whole number, but it's stored as float — likely because pandas upcasts a column to float when it contains missing values, or due to how it was exported."
+  advantages:
+    - "Slightly reduces memory usage"
+    - "More accurately reflects that this is count/whole-number data"
+  disadvantages:
+    - "If the column has missing values, converting to a standard int dtype isn't possible until those are handled first (pandas' nullable Int64 type is an alternative)"
+  alternatives:
+    - "Use pandas nullable Int64 dtype if missing values are present and you don't want to impute yet"
+  docs_url: "https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.astype.html"
+
+- id: object_to_category
+  category: datatype
+  severity: low
+  applies_to: categorical
+  condition: "is_category_beneficial == True and count > 100"
+  recommendation: "Convert to category dtype"
+  reason: "This column has relatively few distinct values repeated across many rows. Pandas' category dtype stores each unique value once internally, which is far more memory-efficient than storing the full string in every row."
+  advantages:
+    - "Reduces memory usage, sometimes dramatically on large datasets"
+    - "Can speed up groupby and other operations on this column"
+  disadvantages:
+    - "None for read/analysis use — but new values not seen at conversion time need to be added to the category list before they can be assigned"
+  alternatives:
+    - "Leave as object dtype if the column is expected to grow with many new unseen values over time"
+  docs_url: "https://pandas.pydata.org/docs/reference/user_guide/categorical.html"

@@ -105,3 +105,14 @@ App at `http://localhost:8080`
 - Row preview shows duplicate count/percentage, projected row count after removal, and a sample of the actual duplicate rows
 - Column preview lists exact-duplicate column pairs; apply takes an explicit list of which columns to drop
 - Frontend Duplicates
+
+### Day 8 — Datatype Analyzer
+- `services/datatype_service.py`: detectors for datetime-convertible text columns (sampled parsing, threshold-based), whole-number float columns worth converting to int, and low-cardinality object columns worth converting to `category` dtype for memory savings
+- `convert_column_dtype()` supports datetime/integer/category/float/string targets; integer conversion uses pandas nullable `Int64` when missing values are present, since standard `int64` can't hold them
+- `summarize_dtype_conversion()` powers the preview — explicitly surfaces `newly_invalid_count`, the number of values that would become missing after conversion (e.g. unparseable dates), so nothing changes silently
+- `knowledge_base/datatypes.yaml`: object→datetime (both text and categorical), float→int, object→category rules
+- Extended `build_facts()` with `is_datetime_convertible`, `is_int_convertible`, `is_category_beneficial`
+- Two endpoints: `/columns/{column}/convert/preview` and `/convert/apply`
+- Frontend Datatype Analyzer page: column + target-type dropdowns, preview shows before/after dtype and missing-value impact, Apply commits the conversion
+- Linked from Recommendation cards with `category == "datatype"`
+- Verified end to end: converted a text column to datetime, confirmed dtype change and newly-invalid count in preview matched expectations

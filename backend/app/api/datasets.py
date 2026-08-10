@@ -21,6 +21,8 @@ from app.schemas import (
     RemoveDuplicateRowsRequest,
     TypeOverrideRequest,
     UploadResponse,
+    DtypeConversionPreview,
+    DtypeConversionRequest,
 )
 from app.services.imputation_service import compare_strategies, impute_column_in_dataframe, preview_imputation
 from app.services.dataset_service import compute_overview, get_effective_type
@@ -32,6 +34,7 @@ from app.services.quality_service import (
     remove_duplicate_columns,
     remove_duplicate_rows,
 )
+from app.services.datatype_service import convert_column_dtype, summarize_dtype_conversion
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -277,6 +280,41 @@ def apply_remove_duplicate_columns(
         raise HTTPException(status_code=400, detail=f"Column(s) not found: {missing}")
 
     new_df = remove_duplicate_columns(df, body.columns_to_drop)
+    dataset_store.update(dataset_id, new_df)
+
+    filename = dataset_store.get_filename(dataset_id)
+    overrides = dataset_store.get_overrides(dataset_id)
+    return compute_overview(dataset_id=dataset_id, filename=filename, df=new_df, overrides=overrides)
+
+@router.post("/{dataset_id}/columns/{column}/convert/preview", response_model=DtypeConversionPreview)
+def preview_dtype_conversion(
+    dataset_id: str, column: str, body: DtypeConversionRequest
+) -> DtypeConversionPreview:
+    df = _get_df_or_404(dataset_id)
+    if column not in df.columns:
+        raise HTTPException(status_code=404, detail=f"Column '{column}' not found.")
+
+    try:
+        result = summarize_dtype_conversion(df, column, body.target_type)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return DtypeConversionPreview(column=column, **result)
+
+
+@router.post("/{dataset_id}/columns/{column}/convert/apply", response_model=DatasetOverview)
+def apply_dtype_conversion(
+    dataset_id: str, column: str, body: DtypeConversionRequest
+) -> DatasetOverview:
+    df = _get_df_or_404(dataset_id)
+    if column not in df.columns:
+        raise HTTPException(status_code=404, detail=f"Column '{column}' not found.")
+
+    try:
+        new_df = convert_column_dtype(df, column, body.target_type)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     dataset_store.update(dataset_id, new_df)
 
     filename = dataset_store.get_filename(dataset_id)

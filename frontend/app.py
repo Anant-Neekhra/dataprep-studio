@@ -305,6 +305,11 @@ async def recommendations_page(dataset_id: str):
                                 "Go handle this →", f"/duplicates/{dataset_id}"
                             ).classes("text-sm text-blue-600 mt-2")
 
+                        if rec["category"] == "datatype":
+                            ui.link(
+                                "Go handle this →", f"/datatypes/{dataset_id}"
+                            ).classes("text-sm text-blue-600 mt-2")
+
         ui.timer(0.1, load_recommendations, once=True)
 
 IMPUTE_STRATEGIES = ["mean", "median", "mode", "constant", "forward_fill", "backward_fill", "drop_rows"]
@@ -553,3 +558,85 @@ async def duplicates_page(dataset_id: str):
                         ).props("dense")
 
         ui.timer(0.1, load_column_duplicates, once=True)
+
+DTYPE_OPTIONS = ["datetime", "integer", "category", "float", "string"]
+
+
+@ui.page("/datatypes/{dataset_id}")
+async def datatypes_page(dataset_id: str):
+    with ui.column().classes("items-center w-full mt-10 gap-4"):
+        ui.label("Datatype Analyzer").classes("text-2xl font-bold")
+        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+            "text-sm text-gray-400"
+        )
+
+        column_select = ui.select([], label="Column").classes("w-80")
+        target_select = ui.select(DTYPE_OPTIONS, value="datetime", label="Convert to").classes(
+            "w-80"
+        )
+
+        async def load_columns():
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(f"{BACKEND_URL}/datasets/{dataset_id}/column-types")
+                if response.status_code == 200:
+                    names = [c["column"] for c in response.json()]
+                    column_select.set_options(names)
+                    if names:
+                        column_select.set_value(names[0])
+
+        ui.timer(0.1, load_columns, once=True)
+
+        result_container = ui.column().classes("w-full max-w-2xl gap-3")
+
+        async def do_preview():
+            result_container.clear()
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.post(
+                    f"{BACKEND_URL}/datasets/{dataset_id}/columns/{column_select.value}/convert/preview",
+                    json={"target_type": target_select.value},
+                )
+                if response.status_code != 200:
+                    try:
+                        detail = response.json().get("detail", "Unknown error")
+                    except Exception:
+                        detail = f"Request failed ({response.status_code})"
+                    with result_container:
+                        ui.label(f"❌ {detail}").classes("text-red-600")
+                    return
+                preview = response.json()
+
+            with result_container:
+                with ui.card().classes("w-full"):
+                    ui.label(
+                        f"{preview['before_dtype']} → {preview['after_dtype']}"
+                    ).classes("font-semibold")
+                    ui.label(
+                        f"Missing before: {preview['before_missing']} | "
+                        f"Missing after: {preview['after_missing']} | "
+                        f"Newly invalid: {preview['newly_invalid_count']}"
+                    ).classes("text-sm text-gray-600")
+                    ui.label(f"Sample before: {preview['sample_before']}").classes(
+                        "text-xs text-gray-500 mt-2"
+                    )
+                    ui.label(f"Sample after: {preview['sample_after']}").classes(
+                        "text-xs text-gray-500"
+                    )
+
+        async def do_apply():
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.post(
+                    f"{BACKEND_URL}/datasets/{dataset_id}/columns/{column_select.value}/convert/apply",
+                    json={"target_type": target_select.value},
+                )
+                if response.status_code != 200:
+                    try:
+                        detail = response.json().get("detail", "Unknown error")
+                    except Exception:
+                        detail = f"Request failed ({response.status_code})"
+                    ui.notify(detail, type="negative")
+                    return
+            ui.notify("Conversion applied.", type="positive")
+
+        with ui.row().classes("gap-2"):
+            ui.button("Preview", on_click=do_preview)
+            ui.button("Apply", on_click=do_apply).props("color=positive")

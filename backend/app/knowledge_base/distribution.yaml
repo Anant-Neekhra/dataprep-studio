@@ -1,0 +1,67 @@
+- id: high_positive_skew
+  category: distribution
+  severity: medium
+  applies_to: numerical
+  condition: "skewness > 1"
+  recommendation: "Apply a Log Transform"
+  reason: "This column is strongly right-skewed (skewness > 1) — a long tail of high values is pulling the mean away from where most of the data sits. Many statistical methods and models assume roughly symmetric data."
+  advantages:
+    - "Compresses the long tail, making the distribution more symmetric"
+    - "Simple, interpretable, and widely understood"
+  disadvantages:
+    - "Only works on strictly positive values"
+    - "Changes the scale of the data, which affects interpretability of raw values"
+  alternatives:
+    - "Square Root Transform (milder effect)"
+    - "Box-Cox Transform (finds an optimal power transform automatically)"
+    - "Leave as-is if the model you plan to use doesn't assume normality (e.g. tree-based models)"
+  docs_url: "https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.boxcox.html"
+
+- id: moderate_positive_skew
+  category: distribution
+  severity: low
+  applies_to: numerical
+  condition: "skewness > 0.5 and skewness <= 1"
+  recommendation: "Consider a Square Root Transform"
+  reason: "This column is moderately right-skewed. A square root transform offers a gentler correction than a full log transform."
+  advantages:
+    - "Milder than log transform, preserves more of the original scale relationships"
+    - "Works on zero and positive values, unlike log"
+  disadvantages:
+    - "Less effective than log transform on more severely skewed data"
+  alternatives:
+    - "Log Transform (stronger effect)"
+    - "Leave as-is if mild skew doesn't concern your downstream analysis"
+  docs_url: "https://numpy.org/doc/stable/reference/generated/numpy.sqrt.html"
+
+- id: high_negative_skew
+  category: distribution
+  severity: medium
+  applies_to: numerical
+  condition: "skewness < -1"
+  recommendation: "Apply a Yeo-Johnson Transform"
+  reason: "This column is strongly left-skewed (skewness < -1) — a long tail of low values is pulling the mean down. Yeo-Johnson handles negative skew (and negative/zero values) better than log or square root, which are designed for right-skewed positive data."
+  advantages:
+    - "Handles negative, zero, and positive values without needing to shift the data first"
+    - "Automatically finds an optimal power transform via maximum likelihood"
+  disadvantages:
+    - "Less interpretable than a simple log or square root transform"
+    - "Requires scikit-learn or scipy to apply consistently at inference time later"
+  alternatives:
+    - "Box-Cox Transform (if all values are strictly positive)"
+  docs_url: "https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.yeojohnson.html"
+
+- id: not_normally_distributed
+  category: distribution
+  severity: low
+  applies_to: numerical
+  condition: "skewness >= -0.5 and skewness <= 0.5"
+  recommendation: "No transformation needed"
+  reason: "This column's skewness is close to zero, suggesting a roughly symmetric distribution. Transformation is unlikely to provide meaningful benefit here."
+  advantages:
+    - "No transform needed — simplest option, preserves interpretability"
+  disadvantages:
+    - "None — this is the recommended default when skew is already low"
+  alternatives:
+    - "Still worth checking a normality test (e.g. Shapiro-Wilk) if your specific method requires strict normality"
+  docs_url: "https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html"

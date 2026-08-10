@@ -116,3 +116,16 @@ App at `http://localhost:8080`
 - Frontend Datatype Analyzer page: column + target-type dropdowns, preview shows before/after dtype and missing-value impact, Apply commits the conversion
 - Linked from Recommendation cards with `category == "datatype"`
 - Verified end to end: converted a text column to datetime, confirmed dtype change and newly-invalid count in preview matched expectations
+
+### Day 9 — Distribution Analysis + Transform Recommendations
+- `services/distribution_service.py`: Shapiro-Wilk normality test (sampled at 5000 rows for large datasets), histogram bin computation, and four transforms — log, sqrt, Box-Cox, Yeo-Johnson — each validating its own input range (e.g. log rejects non-positive values with a clear message pointing to Yeo-Johnson as an alternative)
+- `knowledge_base/distribution.yaml`: skewness-based rules recommending log transform (high positive skew), sqrt (moderate positive skew), Yeo-Johnson (negative skew), or no transform (already near-symmetric)
+- Three endpoints: `/columns/{column}/distribution` (stats + histogram + normality test), `/transform/preview`, `/transform/apply`
+- Frontend Distribution Analysis page: first page using real Plotly charts (`ui.plotly`) — histogram auto-updates on column selection, transform preview shows side-by-side before/after histograms with skewness change
+- Linked from Recommendation cards with `category == "distribution"`
+- Verified end to end: log transform on a skewed column reduced skewness toward zero, confirmed visually in the before/after histograms
+
+**UX fixes discovered through real testing:**
+- Added `DELETE /datasets/{id}/columns/{column}` endpoint + "Drop Column" button on the Column Types page — a real functional gap where Data Quality recommendations suggested dropping constant/duplicate/low-variance columns but no UI action existed to actually do it
+- Added a "Column Types & Drop Columns →" link on the Recommendations page — previously the only way back from Recommendations was to Upload, which meant losing access to the dataset entirely mid-session
+- Re-confirmed the stale-`dataset_id`-after-backend-restart gotcha from Day 6 — noted as a known limitation until Day 16's SQLite-backed History Manager; a full persistent navigation bar is deferred to Day 13/20 as originally planned, since these smaller fixes solve the immediate friction without front-loading that work

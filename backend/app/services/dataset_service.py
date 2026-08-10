@@ -113,3 +113,7 @@ def compute_overview(
         feature_types=FeatureTypeBreakdown(**feature_types),
         dtypes={col: str(dtype) for col, dtype in df.dtypes.items()},
     )
+
+def drop_column(df: pd.DataFrame, column: str) -> pd.DataFrame:
+    """Returns a NEW DataFrame with the specified column removed."""
+    return df.drop(columns=[column])

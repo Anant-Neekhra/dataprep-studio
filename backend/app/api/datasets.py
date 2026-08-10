@@ -2,6 +2,8 @@ import io
 
 import pandas as pd
 from fastapi import APIRouter, HTTPException, UploadFile
+from scipy.stats import kurtosis as scipy_stats_kurtosis
+from scipy.stats import skew as scipy_stats_skew
 
 from app.rule_engine.engine import evaluate_dataset_rules, evaluate_rules
 from app.rule_engine.facts import build_dataset_facts, build_facts
@@ -23,9 +25,14 @@ from app.schemas import (
     UploadResponse,
     DtypeConversionPreview,
     DtypeConversionRequest,
+    DistributionAnalysis, 
+    HistogramData, 
+    NormalityTestResult, 
+    TransformPreview, 
+    TransformRequest
 )
 from app.services.imputation_service import compare_strategies, impute_column_in_dataframe, preview_imputation
-from app.services.dataset_service import compute_overview, get_effective_type
+from app.services.dataset_service import compute_overview, get_effective_type, drop_column
 from app.services.profiling_service import compute_profile, profile_column
 from app.storage import dataset_store
 from app.services.quality_service import (
@@ -35,9 +42,13 @@ from app.services.quality_service import (
     remove_duplicate_rows,
 )
 from app.services.datatype_service import convert_column_dtype, summarize_dtype_conversion
+from app.services.distribution_service import (
+    apply_transform,
+    compute_histogram_bins,
+    normality_test,
+)
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
-
 
 def _get_df_or_404(dataset_id: str) -> pd.DataFrame:
     df = dataset_store.get(dataset_id)
@@ -316,6 +327,102 @@ def apply_dtype_conversion(
         raise HTTPException(status_code=400, detail=str(e))
 
     dataset_store.update(dataset_id, new_df)
+
+    filename = dataset_store.get_filename(dataset_id)
+    overrides = dataset_store.get_overrides(dataset_id)
+    return compute_overview(dataset_id=dataset_id, filename=filename, df=new_df, overrides=overrides)
+
+@router.get("/{dataset_id}/columns/{column}/distribution", response_model=DistributionAnalysis)
+def get_column_distribution(dataset_id: str, column: str) -> DistributionAnalysis:
+    df = _get_df_or_404(dataset_id)
+    if column not in df.columns:
+        raise HTTPException(status_code=404, detail=f"Column '{column}' not found.")
+
+    series = df[column]
+    if not pd.api.types.is_numeric_dtype(series):
+        raise HTTPException(
+            status_code=400, detail="Distribution analysis requires a numeric column."
+        )
+
+    non_null = series.dropna()
+    skewness = float(scipy_stats_skew(non_null)) if len(non_null) >= 3 else None
+    kurtosis = float(scipy_stats_kurtosis(non_null)) if len(non_null) >= 3 else None
+
+    hist = compute_histogram_bins(series)
+    norm_result = normality_test(series)
+
+    return DistributionAnalysis(
+        column=column,
+        skewness=skewness,
+        kurtosis=kurtosis,
+        histogram=HistogramData(**hist),
+        normality_test=NormalityTestResult(**norm_result),
+    )
+
+
+@router.post("/{dataset_id}/columns/{column}/transform/preview", response_model=TransformPreview)
+def preview_transform(
+    dataset_id: str, column: str, body: TransformRequest
+) -> TransformPreview:
+    df = _get_df_or_404(dataset_id)
+    if column not in df.columns:
+        raise HTTPException(status_code=404, detail=f"Column '{column}' not found.")
+
+    before_series = df[column]
+    before_non_null = before_series.dropna()
+    before_skew = float(scipy_stats_skew(before_non_null)) if len(before_non_null) >= 3 else None
+
+    try:
+        after_series = apply_transform(before_series, body.transform)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    after_non_null = after_series.dropna()
+    after_skew = float(scipy_stats_skew(after_non_null)) if len(after_non_null) >= 3 else None
+
+    return TransformPreview(
+        column=column,
+        transform=body.transform,
+        before_skewness=before_skew,
+        after_skewness=after_skew,
+        before_histogram=HistogramData(**compute_histogram_bins(before_series)),
+        after_histogram=HistogramData(**compute_histogram_bins(after_series)),
+    )
+
+
+@router.post("/{dataset_id}/columns/{column}/transform/apply", response_model=DatasetOverview)
+def apply_column_transform(
+    dataset_id: str, column: str, body: TransformRequest
+) -> DatasetOverview:
+    df = _get_df_or_404(dataset_id)
+    if column not in df.columns:
+        raise HTTPException(status_code=404, detail=f"Column '{column}' not found.")
+
+    try:
+        new_df = df.copy()
+        new_df[column] = apply_transform(df[column], body.transform)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    dataset_store.update(dataset_id, new_df)
+
+    filename = dataset_store.get_filename(dataset_id)
+    overrides = dataset_store.get_overrides(dataset_id)
+    return compute_overview(dataset_id=dataset_id, filename=filename, df=new_df, overrides=overrides)
+
+@router.delete("/{dataset_id}/columns/{column}", response_model=DatasetOverview)
+def delete_column(dataset_id: str, column: str) -> DatasetOverview:
+    df = _get_df_or_404(dataset_id)
+    if column not in df.columns:
+        raise HTTPException(status_code=404, detail=f"Column '{column}' not found.")
+
+    new_df = drop_column(df, column)
+    dataset_store.update(dataset_id, new_df)
+
+    # Column overrides for a dropped column are stale — clean up so they
+    # don't linger and cause confusion if a future column happens to
+    # share the same name.
+    dataset_store.clear_override(dataset_id, column)
 
     filename = dataset_store.get_filename(dataset_id)
     overrides = dataset_store.get_overrides(dataset_id)

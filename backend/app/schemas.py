@@ -162,3 +162,34 @@ class DtypeConversionPreview(BaseModel):
     newly_invalid_count: int
     sample_before: list
     sample_after: list
+
+class HistogramData(BaseModel):
+    bin_edges: list[float]
+    counts: list[int]
+
+
+class NormalityTestResult(BaseModel):
+    statistic: float | None
+    p_value: float | None
+    is_normal: bool | None
+
+
+class DistributionAnalysis(BaseModel):
+    column: str
+    skewness: float | None
+    kurtosis: float | None
+    histogram: HistogramData
+    normality_test: NormalityTestResult
+
+
+class TransformRequest(BaseModel):
+    transform: Literal["none", "log", "sqrt", "box_cox", "yeo_johnson"]
+
+
+class TransformPreview(BaseModel):
+    column: str
+    transform: str
+    before_skewness: float | None
+    after_skewness: float | None
+    before_histogram: HistogramData
+    after_histogram: HistogramData

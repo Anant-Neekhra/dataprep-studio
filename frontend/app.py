@@ -2,6 +2,7 @@ import os
 
 import httpx
 from nicegui import ui
+import plotly.graph_objects as go
 
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
 
@@ -215,6 +216,25 @@ async def column_types_page(dataset_id: str):
                                         "dense flat"
                                     )
 
+                                async def drop_this_column(column=col_info["column"]):
+                                    async with httpx.AsyncClient(timeout=15.0) as client:
+                                        response = await client.delete(
+                                            f"{BACKEND_URL}/datasets/{dataset_id}/columns/{column}"
+                                        )
+                                        if response.status_code != 200:
+                                            try:
+                                                detail = response.json().get("detail", "Unknown error")
+                                            except Exception:
+                                                detail = f"Request failed ({response.status_code})"
+                                            ui.notify(detail, type="negative")
+                                            return
+                                    ui.notify(f"Dropped '{column}'", type="positive")
+                                    await load_column_types()
+
+                                ui.button("Drop Column", on_click=drop_this_column).props(
+                                    "dense flat color=negative"
+                                )
+
         ui.timer(0.1, load_column_types, once=True)
 
 SEVERITY_COLORS = {
@@ -233,6 +253,9 @@ async def recommendations_page(dataset_id: str):
             "not AI. Expand any card to see the full reasoning."
         ).classes("text-sm text-gray-400 text-center max-w-xl")
         ui.link("← Back to upload", "/upload").classes("text-sm text-gray-400")
+        ui.link("Column Types & Drop Columns →", f"/column-types/{dataset_id}").classes(
+            "text-sm text-blue-600"
+        )
 
         cards_container = ui.column().classes("w-full max-w-3xl gap-3")
 
@@ -308,6 +331,11 @@ async def recommendations_page(dataset_id: str):
                         if rec["category"] == "datatype":
                             ui.link(
                                 "Go handle this →", f"/datatypes/{dataset_id}"
+                            ).classes("text-sm text-blue-600 mt-2")
+
+                        if rec["category"] == "distribution":
+                            ui.link(
+                                "Go handle this →", f"/distribution/{dataset_id}"
                             ).classes("text-sm text-blue-600 mt-2")
 
         ui.timer(0.1, load_recommendations, once=True)
@@ -640,3 +668,142 @@ async def datatypes_page(dataset_id: str):
         with ui.row().classes("gap-2"):
             ui.button("Preview", on_click=do_preview)
             ui.button("Apply", on_click=do_apply).props("color=positive")
+
+
+TRANSFORM_OPTIONS = ["none", "log", "sqrt", "box_cox", "yeo_johnson"]
+
+
+def make_histogram_figure(bin_edges: list, counts: list, title: str) -> go.Figure:
+    bin_centers = [(bin_edges[i] + bin_edges[i + 1]) / 2 for i in range(len(counts))]
+    fig = go.Figure(data=[go.Bar(x=bin_centers, y=counts)])
+    fig.update_layout(title=title, height=300, margin=dict(l=20, r=20, t=40, b=20))
+    return fig
+
+
+@ui.page("/distribution/{dataset_id}")
+async def distribution_page(dataset_id: str):
+    with ui.column().classes("items-center w-full mt-10 gap-4"):
+        ui.label("Distribution Analysis").classes("text-2xl font-bold")
+        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+            "text-sm text-gray-400"
+        )
+
+        column_select = ui.select([], label="Numeric Column").classes("w-80")
+
+        async def load_numeric_columns():
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(f"{BACKEND_URL}/datasets/{dataset_id}/column-types")
+                if response.status_code == 200:
+                    names = [
+                        c["column"] for c in response.json() if c["effective_type"] == "numerical"
+                    ]
+                    column_select.set_options(names)
+                    if names:
+                        column_select.set_value(names[0])
+
+        ui.timer(0.1, load_numeric_columns, once=True)
+
+        analysis_container = ui.column().classes("w-full max-w-2xl gap-3")
+
+        async def load_distribution():
+            analysis_container.clear()
+            if not column_select.value:
+                return
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(
+                    f"{BACKEND_URL}/datasets/{dataset_id}/columns/{column_select.value}/distribution"
+                )
+                if response.status_code != 200:
+                    try:
+                        detail = response.json().get("detail", "Unknown error")
+                    except Exception:
+                        detail = f"Request failed ({response.status_code})"
+                    with analysis_container:
+                        ui.label(f"❌ {detail}").classes("text-red-600")
+                    return
+                dist = response.json()
+
+            with analysis_container:
+                with ui.card().classes("w-full"):
+                    ui.label(f"Skewness: {dist['skewness']}  |  Kurtosis: {dist['kurtosis']}").classes(
+                        "text-sm"
+                    )
+                    norm = dist["normality_test"]
+                    if norm["is_normal"] is not None:
+                        ui.label(
+                            f"Shapiro-Wilk p-value: {norm['p_value']:.4f} — "
+                            f"{'Likely normal' if norm['is_normal'] else 'Not normally distributed'}"
+                        ).classes("text-sm text-gray-600")
+
+                    fig = make_histogram_figure(
+                        dist["histogram"]["bin_edges"], dist["histogram"]["counts"], column_select.value
+                    )
+                    ui.plotly(fig).classes("w-full")
+
+        column_select.on("update:model-value", lambda: load_distribution())
+        ui.timer(0.5, load_distribution, once=True)
+
+        ui.separator().classes("my-4")
+
+        ui.label("Apply a Transform").classes("text-lg font-semibold")
+        transform_select = ui.select(TRANSFORM_OPTIONS, value="log", label="Transform")
+
+        transform_result = ui.column().classes("w-full max-w-2xl gap-3")
+
+        async def do_transform_preview():
+            transform_result.clear()
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.post(
+                    f"{BACKEND_URL}/datasets/{dataset_id}/columns/{column_select.value}/transform/preview",
+                    json={"transform": transform_select.value},
+                )
+                if response.status_code != 200:
+                    try:
+                        detail = response.json().get("detail", "Unknown error")
+                    except Exception:
+                        detail = f"Request failed ({response.status_code})"
+                    with transform_result:
+                        ui.label(f"❌ {detail}").classes("text-red-600")
+                    return
+                preview = response.json()
+
+            with transform_result:
+                with ui.card().classes("w-full"):
+                    ui.label(
+                        f"Skewness: {preview['before_skewness']} → {preview['after_skewness']}"
+                    ).classes("font-semibold")
+                    with ui.row().classes("w-full gap-4"):
+                        ui.plotly(
+                            make_histogram_figure(
+                                preview["before_histogram"]["bin_edges"],
+                                preview["before_histogram"]["counts"],
+                                "Before",
+                            )
+                        ).classes("flex-1")
+                        ui.plotly(
+                            make_histogram_figure(
+                                preview["after_histogram"]["bin_edges"],
+                                preview["after_histogram"]["counts"],
+                                "After",
+                            )
+                        ).classes("flex-1")
+
+        async def do_transform_apply():
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.post(
+                    f"{BACKEND_URL}/datasets/{dataset_id}/columns/{column_select.value}/transform/apply",
+                    json={"transform": transform_select.value},
+                )
+                if response.status_code != 200:
+                    try:
+                        detail = response.json().get("detail", "Unknown error")
+                    except Exception:
+                        detail = f"Request failed ({response.status_code})"
+                    ui.notify(detail, type="negative")
+                    return
+            ui.notify("Transform applied.", type="positive")
+            await load_distribution()
+
+        with ui.row().classes("gap-2"):
+            ui.button("Preview Transform", on_click=do_transform_preview)
+            ui.button("Apply Transform", on_click=do_transform_apply).props("color=positive")

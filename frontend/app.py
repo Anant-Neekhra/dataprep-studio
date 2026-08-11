@@ -157,6 +157,9 @@ async def column_types_page(dataset_id: str):
         ui.link("Categorical Analysis →", f"/categorical/{dataset_id}").classes(
             "text-sm text-blue-600"
         )
+        ui.link("Feature Inspector →", f"/inspect/{dataset_id}").classes(
+            "text-sm text-blue-600"
+        )
 
         table_container = ui.column().classes("w-full max-w-3xl gap-2")
 
@@ -1124,3 +1127,120 @@ async def categorical_page(dataset_id: str):
 
         column_select.on("update:model-value", lambda: load_analysis())
         ui.timer(0.5, load_analysis, once=True)
+
+@ui.page("/inspect/{dataset_id}")
+async def inspect_page(dataset_id: str):
+    with ui.column().classes("items-center w-full mt-10 gap-4"):
+        ui.label("Feature Inspector").classes("text-2xl font-bold")
+        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+            "text-sm text-gray-400"
+        )
+
+        column_select = ui.select([], label="Column").classes("w-80")
+
+        async def load_columns():
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(f"{BACKEND_URL}/datasets/{dataset_id}/column-types")
+                if response.status_code == 200:
+                    names = [c["column"] for c in response.json()]
+                    column_select.set_options(names)
+                    if names:
+                        column_select.set_value(names[0])
+
+        ui.timer(0.1, load_columns, once=True)
+
+        report_container = ui.column().classes("w-full max-w-3xl gap-3")
+        request_id = {"value": 0}
+
+        async def load_report():
+            request_id["value"] += 1
+            my_id = request_id["value"]
+            if not column_select.value:
+                return
+
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(
+                    f"{BACKEND_URL}/datasets/{dataset_id}/columns/{column_select.value}/inspect"
+                )
+
+            if my_id != request_id["value"]:
+                return
+
+            report_container.clear()
+
+            if response.status_code != 200:
+                try:
+                    detail = response.json().get("detail", "Unknown error")
+                except Exception:
+                    detail = f"Request failed ({response.status_code})"
+                with report_container:
+                    ui.label(f"❌ {detail}").classes("text-red-600")
+                return
+
+            r = response.json()
+
+            with report_container:
+                with ui.card().classes("w-full"):
+                    ui.label(f"{r['column']}").classes("text-xl font-bold")
+                    type_line = f"pandas: {r['pandas_dtype']}  |  effective type: {r['effective_type']}"
+                    if r["is_overridden"]:
+                        type_line += f" (overridden from {r['detected_type']})"
+                    ui.label(type_line).classes("text-sm text-gray-500")
+                    ui.label(f"Memory: {r['memory_usage_bytes']:,} bytes").classes(
+                        "text-xs text-gray-400"
+                    )
+
+                with ui.card().classes("w-full"):
+                    ui.label("Profile").classes("font-semibold")
+                    p = r["profile"]
+                    ui.label(
+                        f"Count: {p['count']}  |  Missing: {p['missing_percentage']}%  |  "
+                        f"Unique: {p['unique_count']}  |  Cardinality ratio: {p['cardinality_ratio']}"
+                    ).classes("text-sm")
+                    if r["entropy"] is not None:
+                        ui.label(f"Entropy: {r['entropy']} bits").classes("text-sm")
+                    if p.get("mean") is not None:
+                        ui.label(
+                            f"Mean: {p['mean']}  |  Median: {p['median']}  |  Std: {p['std']}  |  "
+                            f"Skewness: {p['skewness']}  |  Kurtosis: {p['kurtosis']}"
+                        ).classes("text-sm")
+
+                quality = r["quality_flags"]
+                active_flags = [k.replace("_", " ") for k, v in quality.items() if v]
+                if active_flags:
+                    with ui.card().classes("w-full"):
+                        ui.label("Quality Flags").classes("font-semibold text-orange-600")
+                        ui.label(", ".join(active_flags)).classes("text-sm")
+
+                if r["outlier_summary"]:
+                    with ui.card().classes("w-full"):
+                        ui.label("Outliers (IQR method)").classes("font-semibold")
+                        ui.label(
+                            f"{r['outlier_summary']['outlier_count']} outliers "
+                            f"({r['outlier_summary']['outlier_percentage']}%)"
+                        ).classes("text-sm")
+
+                if r["top_correlated_columns"]:
+                    with ui.card().classes("w-full"):
+                        ui.label("Top Correlated Columns").classes("font-semibold")
+                        for c in r["top_correlated_columns"]:
+                            ui.label(f"{c['column']}: {c['correlation']}").classes("text-sm")
+
+                if r["possible_transformations"]:
+                    with ui.card().classes("w-full"):
+                        ui.label("Possible Transformations").classes("font-semibold")
+                        for t in r["possible_transformations"]:
+                            ui.label(f"• {t}").classes("text-sm text-gray-600")
+
+                if r["recommendations"]:
+                    with ui.card().classes("w-full"):
+                        ui.label(f"{len(r['recommendations'])} Active Recommendation(s)").classes(
+                            "font-semibold"
+                        )
+                        for rec in r["recommendations"]:
+                            ui.label(f"• {rec['recommendation']} ({rec['severity']})").classes(
+                                "text-sm text-gray-600"
+                            )
+
+        column_select.on("update:model-value", lambda: load_report())
+        ui.timer(0.5, load_report, once=True)

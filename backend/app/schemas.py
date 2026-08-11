@@ -237,3 +237,18 @@ class MultiLabelProfile(BaseModel):
     vocabulary_size: int
     avg_labels_per_row: float
     label_frequencies: dict[str, int]
+
+class FeatureInspectorReport(BaseModel):
+    column: str
+    pandas_dtype: str
+    detected_type: str
+    effective_type: str
+    is_overridden: bool
+    memory_usage_bytes: int
+    profile: ColumnProfile
+    entropy: float | None
+    quality_flags: dict  # has_whitespace, has_case_inconsistency, is_constant, is_low_variance
+    outlier_summary: dict | None  # None for non-numeric columns
+    top_correlated_columns: list[dict]  # [{column, correlation}, ...], numeric only
+    recommendations: list[Recommendation]
+    possible_transformations: list[str]

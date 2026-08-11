@@ -37,7 +37,8 @@ from app.schemas import (
     CorrelationPair, 
     HighCorrelationPairs,
     CategoryFrequency, 
-    MultiLabelProfile
+    MultiLabelProfile,
+    FeatureInspectorReport
 )
 from app.services.imputation_service import compare_strategies, impute_column_in_dataframe, preview_imputation
 from app.services.dataset_service import compute_overview, get_effective_type, drop_column
@@ -66,6 +67,7 @@ from app.services.categorical_service import (
     detect_multi_label_delimiter,
     profile_multi_label_column,
 )
+from app.services.profiling_service import compute_entropy
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -527,3 +529,77 @@ def get_multi_label_profile(dataset_id: str, column: str) -> MultiLabelProfile:
 
     result = profile_multi_label_column(df[column], delimiter)
     return MultiLabelProfile(column=column, **result)
+
+@router.get("/{dataset_id}/columns/{column}/inspect", response_model=FeatureInspectorReport)
+def inspect_column(dataset_id: str, column: str) -> FeatureInspectorReport:
+    df = _get_df_or_404(dataset_id)
+    if column not in df.columns:
+        raise HTTPException(status_code=404, detail=f"Column '{column}' not found.")
+
+    overrides = dataset_store.get_overrides(dataset_id)
+    series = df[column]
+
+    detected, effective, is_overridden = get_effective_type(series, column, overrides)
+    profile = profile_column(series, column, effective)
+    facts = build_facts(profile, series=series)
+
+    quality_flags = {
+        "has_whitespace": facts["has_whitespace"],
+        "has_case_inconsistency": facts["has_case_inconsistency"],
+        "is_constant": facts["is_constant"],
+        "is_low_variance": facts["is_low_variance"],
+    }
+
+    outlier_summary = None
+    top_correlated = []
+    possible_transformations = []
+
+    if effective == "numerical":
+        outlier_result = detect_outliers(series, "iqr")
+        outlier_summary = {
+            "outlier_count": outlier_result["outlier_count"],
+            "outlier_percentage": outlier_result["outlier_percentage"],
+        }
+
+        corr_result = compute_numeric_correlation_matrix(df, method="pearson")
+        if column in corr_result["columns"]:
+            idx = corr_result["columns"].index(column)
+            other_correlations = [
+                {"column": other_col, "correlation": corr_result["matrix"][idx][j]}
+                for j, other_col in enumerate(corr_result["columns"])
+                if other_col != column
+            ]
+            other_correlations.sort(key=lambda x: abs(x["correlation"]), reverse=True)
+            top_correlated = other_correlations[:5]
+
+        if facts["skewness"] and abs(facts["skewness"]) > 0.5:
+            possible_transformations.append("log/sqrt/Box-Cox/Yeo-Johnson transform (see Distribution Analysis)")
+        if facts["outlier_pct"] > 1:
+            possible_transformations.append("Outlier treatment — cap or remove (see Outlier Analysis)")
+
+    elif effective == "categorical":
+        possible_transformations.append("Encoding — one-hot, label, or ordinal (see Encoding Advisor, coming Day 14)")
+
+    elif effective == "multi_label":
+        possible_transformations.append("Multi-label binarization (see Encoding Advisor, coming Day 14)")
+
+    elif effective == "id":
+        possible_transformations.append("Consider excluding from feature set — likely carries no predictive signal")
+
+    recommendations = evaluate_rules(column, effective, facts)
+
+    return FeatureInspectorReport(
+        column=column,
+        pandas_dtype=str(series.dtype),
+        detected_type=detected,
+        effective_type=effective,
+        is_overridden=is_overridden,
+        memory_usage_bytes=int(series.memory_usage(deep=True)),
+        profile=profile,
+        entropy=compute_entropy(series),
+        quality_flags=quality_flags,
+        outlier_summary=outlier_summary,
+        top_correlated_columns=top_correlated,
+        recommendations=recommendations,
+        possible_transformations=possible_transformations,
+    )

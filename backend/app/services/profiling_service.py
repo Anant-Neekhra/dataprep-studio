@@ -1,5 +1,6 @@
 import pandas as pd
 from scipy import stats as scipy_stats
+import numpy as np
 
 from app.schemas import ColumnProfile, DatasetProfile
 from app.services.dataset_service import get_effective_type
@@ -73,3 +74,20 @@ def compute_profile(
         _, effective_type, _ = get_effective_type(df[col], col, overrides)
         columns.append(profile_column(df[col], col, effective_type))
     return DatasetProfile(dataset_id=dataset_id, columns=columns)
+
+def compute_entropy(series: pd.Series) -> float | None:
+    """
+    Shannon entropy, in bits — measures how 'spread out' a column's
+    values are. Low entropy means one or few values dominate (e.g. a
+    column that's 95% one category); high entropy means values are
+    more evenly distributed. Useful as a quick signal alongside
+    cardinality: two columns can have the same unique-value count but
+    very different entropy if one is dominated by a single value.
+    """
+    non_null = series.dropna()
+    if len(non_null) == 0:
+        return None
+
+    value_counts = non_null.value_counts(normalize=True)
+    entropy = -(value_counts * np.log2(value_counts)).sum()
+    return round(float(entropy), 4)

@@ -170,3 +170,11 @@ App at `http://localhost:8080`
 - Frontend Categorical Analysis page: auto-detects whether the selected column is multi-label or standard categorical and renders the appropriate bar chart (label frequencies vs category frequencies); reused the request-token race-condition guard from Day 11 proactively
 - Linked from the Column Types page (not tied to a specific recommendation, since categorical exploration is useful regardless of whether an issue was flagged)
 - Verified end to end on a real multi-label test dataset (movie genres): correctly auto-detected as `multi_label`, correct delimiter identified, correct vocabulary size and per-label counts
+
+### Day 13 — Feature Inspector (aggregation)
+- `compute_entropy()`: Shannon entropy in bits — a new stat not previously computed, complements cardinality by capturing how evenly distributed a column's values are, not just how many distinct values exist
+- `GET /columns/{column}/inspect` — a single composition endpoint pulling together: effective type (Day 3), full profile (Day 3), entropy (today), quality flags (Day 5), outlier summary via IQR (Day 10), top 5 correlated columns (Day 11), matching rule-engine recommendations (Day 4+), and a "possible transformations" list tailored to the column's effective type (numerical → distribution/outlier tools, categorical → encoding, multi_label → binarization, id → exclusion warning)
+- Deliberately introduces almost no new detection logic — every number in the report is computed by an existing, previously-tested service function; today's work was composition, not detection
+- Frontend Feature Inspector page: single-column deep-dive combining every card type built in prior days into one scrollable report
+- Linked from the Column Types page
+- Verified end to end: inspected a numeric column with missing values, outliers, and correlation — confirmed all sections populated correctly in one unified view

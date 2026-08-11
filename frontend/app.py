@@ -256,6 +256,9 @@ async def recommendations_page(dataset_id: str):
         ui.link("Column Types & Drop Columns →", f"/column-types/{dataset_id}").classes(
             "text-sm text-blue-600"
         )
+        ui.link("Correlation Analysis →", f"/correlation/{dataset_id}").classes(
+            "text-sm text-blue-600"
+        )
 
         cards_container = ui.column().classes("w-full max-w-3xl gap-3")
 
@@ -341,6 +344,11 @@ async def recommendations_page(dataset_id: str):
                         if rec["category"] == "outliers":
                             ui.link(
                                 "Go handle this →", f"/outliers/{dataset_id}"
+                            ).classes("text-sm text-blue-600 mt-2")
+
+                        if rec["category"] == "correlation":
+                            ui.link(
+                                "Go handle this →", f"/correlation/{dataset_id}"
                             ).classes("text-sm text-blue-600 mt-2")
 
         ui.timer(0.1, load_recommendations, once=True)
@@ -907,3 +915,106 @@ async def outliers_page(dataset_id: str):
         column_select.on("update:model-value", lambda: load_outliers())
         method_select.on("update:model-value", lambda: load_outliers())
         ui.timer(0.5, load_outliers, once=True)
+
+CORRELATION_METHODS = ["pearson", "spearman", "kendall"]
+
+
+@ui.page("/correlation/{dataset_id}")
+async def correlation_page(dataset_id: str):
+    with ui.column().classes("items-center w-full mt-10 gap-4"):
+        ui.label("Correlation Analysis").classes("text-2xl font-bold")
+        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+            "text-sm text-gray-400"
+        )
+
+        with ui.row().classes("gap-4 items-end"):
+            method_select = ui.select(CORRELATION_METHODS, value="pearson", label="Method").classes(
+                "w-60"
+            )
+            threshold_input = ui.number(
+                label="High Correlation Threshold (changes just for visualization)", value=0.8, min=0.0, max=1.0, step=0.05
+            ).classes("w-60")
+
+        heatmap_container = ui.column().classes("w-full max-w-3xl gap-3")
+
+        correlation_request_id = {"value": 0}
+
+        async def load_correlation():
+            correlation_request_id["value"] += 1
+            my_request_id = correlation_request_id["value"]
+
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                corr_response = await client.get(
+                    f"{BACKEND_URL}/datasets/{dataset_id}/correlation",
+                    params={"method": method_select.value},
+                )
+                pairs_response = await client.get(
+                    f"{BACKEND_URL}/datasets/{dataset_id}/correlation/high-pairs",
+                    params={"threshold": threshold_input.value},
+                )
+
+            # If a newer request started while we were waiting on the
+            # network, this response is stale — discard it instead of
+            # rendering, so only the LATEST request's result ever
+            # reaches the container. This is what prevents duplicate
+            # or out-of-order charts when the threshold input fires
+            # multiple rapid events (e.g. one per keystroke).
+            if my_request_id != correlation_request_id["value"]:
+                return
+
+            heatmap_container.clear()
+
+            if corr_response.status_code != 200:
+                with heatmap_container:
+                    ui.label("❌ Could not load correlation matrix.").classes("text-red-600")
+                return
+
+            corr = corr_response.json()
+
+            with heatmap_container:
+                if len(corr["columns"]) < 2:
+                    ui.label(
+                        "Not enough numerical columns for a correlation matrix."
+                    ).classes("text-sm text-gray-500")
+                    return
+
+                fig = go.Figure(
+                    data=go.Heatmap(
+                        z=corr["matrix"],
+                        x=corr["columns"],
+                        y=corr["columns"],
+                        colorscale="RdBu",
+                        zmid=0,
+                        zmin=-1,
+                        zmax=1,
+                        text=corr["matrix"],
+                        texttemplate="%{text}",
+                        textfont={"size": 10},
+                    )
+                )
+                fig.update_layout(
+                    title=f"{method_select.value.capitalize()} Correlation",
+                    height=500,
+                    margin=dict(l=20, r=20, t=40, b=20),
+                )
+                ui.plotly(fig).classes("w-full")
+
+                if pairs_response.status_code == 200:
+                    pairs = pairs_response.json()["pairs"]
+                    if pairs:
+                        with ui.card().classes("w-full mt-2"):
+                            ui.label(
+                                f"High Correlation Pairs (|r| ≥ {threshold_input.value})"
+                            ).classes("font-semibold")
+                            for p in pairs:
+                                ui.label(
+                                    f"{p['column_a']} ↔ {p['column_b']}: {p['correlation']}"
+                                ).classes("text-sm text-gray-600")
+                    else:
+                        ui.label(
+                            f"No pairs above the {threshold_input.value} threshold."
+                        ).classes("text-sm text-gray-500 mt-2")
+
+        method_select.on("update:model-value", lambda: load_correlation())
+        threshold_input.on("update:model-value", lambda: load_correlation())
+        ui.timer(0.1, load_correlation, once=True)

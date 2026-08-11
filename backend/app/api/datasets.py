@@ -32,7 +32,10 @@ from app.schemas import (
     TransformPreview, 
     TransformRequest,
     OutlierDetectionResult, 
-    OutlierTreatmentRequest
+    OutlierTreatmentRequest,
+    CorrelationMatrix, 
+    CorrelationPair, 
+    HighCorrelationPairs
 )
 from app.services.imputation_service import compare_strategies, impute_column_in_dataframe, preview_imputation
 from app.services.dataset_service import compute_overview, get_effective_type, drop_column
@@ -51,6 +54,11 @@ from app.services.distribution_service import (
     normality_test,
 )
 from app.services.outlier_service import cap_outliers, detect_outliers, remove_outliers
+from app.services.correlation_service import (
+    compute_categorical_correlation_matrix,
+    compute_numeric_correlation_matrix,
+    detect_high_correlation_pairs,
+)
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -468,3 +476,21 @@ def apply_outlier_treatment(
     filename = dataset_store.get_filename(dataset_id)
     overrides = dataset_store.get_overrides(dataset_id)
     return compute_overview(dataset_id=dataset_id, filename=filename, df=new_df, overrides=overrides)
+
+@router.get("/{dataset_id}/correlation", response_model=CorrelationMatrix)
+def get_correlation_matrix(
+    dataset_id: str, method: Literal["pearson", "spearman", "kendall"] = "pearson"
+) -> CorrelationMatrix:
+    df = _get_df_or_404(dataset_id)
+    result = compute_numeric_correlation_matrix(df, method=method)
+    return CorrelationMatrix(columns=result["columns"], matrix=result["matrix"], method=method)
+
+
+@router.get("/{dataset_id}/correlation/high-pairs", response_model=HighCorrelationPairs)
+def get_high_correlation_pairs(dataset_id: str, threshold: float = 0.8) -> HighCorrelationPairs:
+    df = _get_df_or_404(dataset_id)
+    result = compute_numeric_correlation_matrix(df, method="pearson")
+    pairs = detect_high_correlation_pairs(result["columns"], result["matrix"], threshold=threshold)
+    return HighCorrelationPairs(
+        pairs=[CorrelationPair(**p) for p in pairs], threshold=threshold
+    )

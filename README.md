@@ -129,3 +129,34 @@ App at `http://localhost:8080`
 - Added `DELETE /datasets/{id}/columns/{column}` endpoint + "Drop Column" button on the Column Types page — a real functional gap where Data Quality recommendations suggested dropping constant/duplicate/low-variance columns but no UI action existed to actually do it
 - Added a "Column Types & Drop Columns →" link on the Recommendations page — previously the only way back from Recommendations was to Upload, which meant losing access to the dataset entirely mid-session
 - Re-confirmed the stale-`dataset_id`-after-backend-restart gotcha from Day 6 — noted as a known limitation until Day 16's SQLite-backed History Manager; a full persistent navigation bar is deferred to Day 13/20 as originally planned, since these smaller fixes solve the immediate friction without front-loading that work
+
+### Day 10 — Outlier Analysis
+- `services/outlier_service.py`: three detection methods — IQR (quartile-based, robust to skew), Z-score (assumes normality), Modified Z-score (median/MAD-based, robust to the outliers' own influence on the statistics — avoids the chicken-and-egg problem standard Z-score has)
+- Two treatment options: `remove_outliers()` (drops flagged rows), `cap_outliers()` (winsorizes to the method's own boundary — keeps row count intact, useful when other columns in the same row still carry value)
+- Cap boundaries are computed consistently with whichever method flagged the outliers, so detection and treatment never disagree on what counts as extreme
+- Extended `build_facts()` with `outlier_pct` (IQR-based, used as the default trigger for rule matching)
+- `knowledge_base/outliers.yaml`: moderate (1-5%) and significant (>5%) outlier rules
+- `GET /columns/{column}/outliers?method=...` (detect), `POST .../outliers/apply` (treat)
+- Frontend Outlier Analysis page: column + method dropdowns both auto-refresh results on change, Cap/Remove buttons with live outlier-count feedback after treatment
+- Linked from Recommendation cards with `category == "outliers"`
+- Verified end to end: compared outlier counts across all three methods on the same column, confirmed Cap reduced the outlier count on reload### Day 10 — Outlier Analysis
+- `services/outlier_service.py`: three detection methods — IQR (quartile-based, robust to skew), Z-score (assumes normality), Modified Z-score (median/MAD-based, robust to the outliers' own influence on the statistics — avoids the chicken-and-egg problem standard Z-score has)
+- Two treatment options: `remove_outliers()` (drops flagged rows), `cap_outliers()` (winsorizes to the method's own boundary — keeps row count intact, useful when other columns in the same row still carry value)
+- Cap boundaries are computed consistently with whichever method flagged the outliers, so detection and treatment never disagree on what counts as extreme
+- Extended `build_facts()` with `outlier_pct` (IQR-based, used as the default trigger for rule matching)
+- `knowledge_base/outliers.yaml`: moderate (1-5%) and significant (>5%) outlier rules
+- `GET /columns/{column}/outliers?method=...` (detect), `POST .../outliers/apply` (treat)
+- Frontend Outlier Analysis page: column + method dropdowns both auto-refresh results on change, Cap/Remove buttons with live outlier-count feedback after treatment
+- Linked from Recommendation cards with `category == "outliers"`
+- Verified end to end: compared outlier counts across all three methods on the same column, confirmed Cap reduced the outlier count on reload
+
+### Day 11 — Correlation Analysis + Multicollinearity Detection
+- `services/correlation_service.py`: Pearson/Spearman/Kendall correlation matrices for numeric columns; Cramér's V (with Bergsma bias correction) for categorical association, implemented but not yet wired into the UI; `detect_high_correlation_pairs()` for threshold-based pair extraction
+- Extended `build_dataset_facts()` with `high_correlation_pair_count` (fixed 0.8 threshold, used by the rule engine)
+- `knowledge_base/correlation.yaml`: moderate (1-3 pairs) and significant (>3 pairs) multicollinearity rules, explaining why it matters for linear models specifically and noting tree-based models are largely unaffected
+- Two endpoints: `/correlation` (matrix), `/correlation/high-pairs` (threshold-based pair list)
+- Frontend Correlation Analysis page: interactive Plotly heatmap (red-blue diverging scale), method switcher, and a separate **user-adjustable exploration threshold** — intentionally decoupled from the rule engine's fixed 0.8 threshold, since the rule engine represents "what the app flags automatically" while this slider is for open-ended exploration at any sensitivity
+- Page made reachable directly from Recommendations regardless of whether a multicollinearity card has fired, since correlation exploration is useful on its own, not just as a fix-this-problem destination
+
+**Bug found and fixed:**
+- Rapid threshold input changes (e.g. typing multiple digits quickly) fired overlapping async reload calls, causing duplicate heatmaps to render when responses arrived out of order. Fixed with a request-token pattern — each `load_correlation()` call tags itself with an incrementing ID and discards its own result if a newer call has since started, so only the most recent request ever renders. This is a reusable pattern for any future page with fast-changing inputs triggering async reloads.

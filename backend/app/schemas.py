@@ -206,3 +206,19 @@ class OutlierDetectionResult(BaseModel):
 class OutlierTreatmentRequest(BaseModel):
     method: Literal["iqr", "zscore", "modified_zscore"]
     action: Literal["remove", "cap"]
+
+class CorrelationMatrix(BaseModel):
+    columns: list[str]
+    matrix: list[list[float]]
+    method: str
+
+
+class CorrelationPair(BaseModel):
+    column_a: str
+    column_b: str
+    correlation: float
+
+
+class HighCorrelationPairs(BaseModel):
+    pairs: list[CorrelationPair]
+    threshold: float

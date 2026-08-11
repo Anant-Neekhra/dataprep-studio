@@ -1,0 +1,35 @@
+- id: multicollinearity_detected
+  category: correlation
+  severity: medium
+  applies_to: dataset
+  condition: "high_correlation_pair_count > 0 and high_correlation_pair_count <= 3"
+  recommendation: "Review highly correlated feature pairs"
+  reason: "One or more pairs of numerical columns are highly correlated (|r| >= 0.8). When two features carry almost the same information, keeping both adds redundancy and can destabilize coefficient estimates in linear models."
+  advantages:
+    - "Removing one column from each redundant pair simplifies the dataset with minimal information loss"
+    - "Improves interpretability and stability for linear models specifically"
+  disadvantages:
+    - "Tree-based models (random forests, gradient boosting) are largely unaffected by multicollinearity — dropping columns may not be necessary depending on your downstream approach"
+  alternatives:
+    - "Combine correlated features into one (e.g. average, or a domain-specific ratio)"
+    - "Use PCA to create uncorrelated components (explanation only — outside this project's ML scope)"
+    - "Leave as-is if using a tree-based model"
+  docs_url: "https://en.wikipedia.org/wiki/Multicollinearity"
+
+- id: multicollinearity_significant
+  category: correlation
+  severity: high
+  applies_to: dataset
+  condition: "high_correlation_pair_count > 3"
+  recommendation: "Review highly correlated feature pairs — significant redundancy detected"
+  reason: "Several pairs of numerical columns are highly correlated (|r| >= 0.8). This level of redundancy can meaningfully distort coefficient interpretation and standard errors in linear models, and may indicate some columns are near-duplicates of each other in meaning."
+  advantages:
+    - "Removing redundant columns meaningfully reduces dimensionality"
+    - "Improves model stability and interpretability for linear methods"
+  disadvantages:
+    - "Worth checking whether some of these pairs are intentionally derived from each other (e.g. total and subtotal columns) before dropping"
+  alternatives:
+    - "Combine correlated features"
+    - "Use PCA (explanation only)"
+    - "Leave as-is for tree-based models"
+  docs_url: "https://en.wikipedia.org/wiki/Multicollinearity"

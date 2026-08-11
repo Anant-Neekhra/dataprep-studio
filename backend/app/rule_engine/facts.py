@@ -13,6 +13,8 @@ from app.services.datatype_service import (
     detect_int_convertible,
 )
 from app.services.outlier_service import detect_outliers_iqr
+from app.services.quality_service import detect_duplicate_columns, detect_duplicate_rows
+from app.services.correlation_service import compute_numeric_correlation_matrix, detect_high_correlation_pairs
 
 def build_facts(profile: ColumnProfile, series: pd.Series | None = None) -> dict:
     facts = {
@@ -60,18 +62,19 @@ def build_facts(profile: ColumnProfile, series: pd.Series | None = None) -> dict
 
 
 def build_dataset_facts(df: pd.DataFrame) -> dict:
-    """
-    Facts about the dataset as a whole, not any single column — used for
-    rules like duplicate row/column detection where no one column is
-    responsible for the issue.
-    """
     from app.services.quality_service import detect_duplicate_columns, detect_duplicate_rows
 
     dup_rows = detect_duplicate_rows(df)
     dup_columns = detect_duplicate_columns(df)
 
+    corr_result = compute_numeric_correlation_matrix(df, method="pearson")
+    high_corr_pairs = detect_high_correlation_pairs(
+        corr_result["columns"], corr_result["matrix"], threshold=0.8
+    )
+
     return {
         "duplicate_row_pct": dup_rows["percentage"],
         "duplicate_row_count": dup_rows["count"],
         "duplicate_column_count": len(dup_columns),
+        "high_correlation_pair_count": len(high_corr_pairs),
     }

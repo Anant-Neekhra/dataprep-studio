@@ -16,6 +16,7 @@ class FeatureTypeBreakdown(BaseModel):
     datetime: int
     text: int
     id: int
+    multi_label: int
     mixed: int
 
 
@@ -59,10 +60,10 @@ class DatasetProfile(BaseModel):
     dataset_id: str
     columns: list[ColumnProfile]
 
-LogicalType = Literal["numerical", "categorical", "boolean", "datetime", "text", "id", "mixed"]
+LogicalType = Literal["numerical", "categorical", "boolean", "datetime", "text", "id", "multi_label", "mixed"]
 
 ALLOWED_LOGICAL_TYPES: list[str] = [
-    "numerical", "categorical", "boolean", "datetime", "text", "id", "mixed"
+    "numerical", "categorical", "boolean", "datetime", "text", "id", "multi_label", "mixed"
 ]
 
 
@@ -222,3 +223,17 @@ class CorrelationPair(BaseModel):
 class HighCorrelationPairs(BaseModel):
     pairs: list[CorrelationPair]
     threshold: float
+
+class CategoryFrequency(BaseModel):
+    categories: list[str]
+    counts: list[int]
+    percentages: list[float]
+    total_unique: int
+
+
+class MultiLabelProfile(BaseModel):
+    column: str
+    delimiter: str
+    vocabulary_size: int
+    avg_labels_per_row: float
+    label_frequencies: dict[str, int]

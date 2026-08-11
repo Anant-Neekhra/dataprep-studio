@@ -3,6 +3,7 @@ import re
 import pandas as pd
 
 from app.schemas import DatasetOverview, FeatureTypeBreakdown
+from app.services.categorical_service import detect_multi_label_delimiter
 
 
 ID_NAME_PATTERN = re.compile(r"(^id$|_id$|^id_|uuid|guid)", re.IGNORECASE)
@@ -46,13 +47,6 @@ def looks_like_id_column(series: pd.Series, column_name: str) -> bool:
 
 
 def classify_dtype(series: pd.Series, column_name: str | None = None) -> str:
-    """
-    Auto-detects a logical type for a column. This is a *suggestion* —
-    the user can always override it via the type-override endpoints.
-    Order matters: we check for ID-likeness before falling through to
-    numerical, since an int64 "user_id" column would otherwise be
-    classified as numerical and get meaningless mean/std computed on it.
-    """
     name = column_name if column_name is not None else series.name
 
     if looks_like_id_column(series, name):
@@ -67,6 +61,8 @@ def classify_dtype(series: pd.Series, column_name: str | None = None) -> str:
         return "categorical"
 
     if series.dtype == object:
+        if detect_multi_label_delimiter(series) is not None:
+            return "multi_label"
         unique_ratio = series.nunique(dropna=True) / max(len(series), 1)
         return "categorical" if unique_ratio < 0.05 else "text"
 
@@ -92,7 +88,7 @@ def compute_overview(
     overrides = overrides or {}
     feature_types = {
         "numerical": 0, "categorical": 0, "boolean": 0,
-        "datetime": 0, "text": 0, "id": 0, "mixed": 0,
+        "datetime": 0, "text": 0, "id": 0, "mixed": 0, "multi_label": 0
     }
     for column in df.columns:
         _, effective_type, _ = get_effective_type(df[column], column, overrides)

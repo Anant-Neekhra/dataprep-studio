@@ -35,7 +35,9 @@ from app.schemas import (
     OutlierTreatmentRequest,
     CorrelationMatrix, 
     CorrelationPair, 
-    HighCorrelationPairs
+    HighCorrelationPairs,
+    CategoryFrequency, 
+    MultiLabelProfile
 )
 from app.services.imputation_service import compare_strategies, impute_column_in_dataframe, preview_imputation
 from app.services.dataset_service import compute_overview, get_effective_type, drop_column
@@ -58,6 +60,11 @@ from app.services.correlation_service import (
     compute_categorical_correlation_matrix,
     compute_numeric_correlation_matrix,
     detect_high_correlation_pairs,
+)
+from app.services.categorical_service import (
+    compute_category_frequencies,
+    detect_multi_label_delimiter,
+    profile_multi_label_column,
 )
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
@@ -494,3 +501,29 @@ def get_high_correlation_pairs(dataset_id: str, threshold: float = 0.8) -> HighC
     return HighCorrelationPairs(
         pairs=[CorrelationPair(**p) for p in pairs], threshold=threshold
     )
+
+@router.get("/{dataset_id}/columns/{column}/category-frequencies", response_model=CategoryFrequency)
+def get_category_frequencies(dataset_id: str, column: str) -> CategoryFrequency:
+    df = _get_df_or_404(dataset_id)
+    if column not in df.columns:
+        raise HTTPException(status_code=404, detail=f"Column '{column}' not found.")
+
+    result = compute_category_frequencies(df[column])
+    return CategoryFrequency(**result)
+
+
+@router.get("/{dataset_id}/columns/{column}/multi-label-profile", response_model=MultiLabelProfile)
+def get_multi_label_profile(dataset_id: str, column: str) -> MultiLabelProfile:
+    df = _get_df_or_404(dataset_id)
+    if column not in df.columns:
+        raise HTTPException(status_code=404, detail=f"Column '{column}' not found.")
+
+    delimiter = detect_multi_label_delimiter(df[column])
+    if delimiter is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not detect a consistent delimiter — this may not be a multi-label column.",
+        )
+
+    result = profile_multi_label_column(df[column], delimiter)
+    return MultiLabelProfile(column=column, **result)

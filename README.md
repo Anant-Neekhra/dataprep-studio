@@ -160,3 +160,13 @@ App at `http://localhost:8080`
 
 **Bug found and fixed:**
 - Rapid threshold input changes (e.g. typing multiple digits quickly) fired overlapping async reload calls, causing duplicate heatmaps to render when responses arrived out of order. Fixed with a request-token pattern — each `load_correlation()` call tags itself with an incrementing ID and discards its own result if a newer call has since started, so only the most recent request ever renders. This is a reusable pattern for any future page with fast-changing inputs triggering async reloads.
+
+### Day 12 — Categorical Analysis (including Multi-Label Detection)
+- `services/categorical_service.py`: standard category frequency analysis (top-N values, counts, percentages), plus a **multi-label delimiter detector** — tries `|`, `,`, `;`, `/` as candidate delimiters and scores each by split coverage × vocabulary repetition, distinguishing genuine multi-label columns (e.g. "Action|Comedy|Drama" — few distinct tokens repeated often) from accidental delimiter matches (e.g. free text or addresses split on commas, where nearly every fragment is unique)
+- New logical type: `multi_label`, added to `LogicalType`, `ALLOWED_LOGICAL_TYPES`, `FeatureTypeBreakdown`, and the Column Types override dropdown — fits directly into the detected/effective/overridden architecture built on Day 3
+- `classify_dtype()` now checks for multi-label before falling through to the categorical/text split
+- `profile_multi_label_column()`: token-level stats (vocabulary size, avg labels per row, per-label frequency) — deliberately different from row-level stats since each row holds a set of labels, not one value
+- Two endpoints: `/category-frequencies` (standard categorical), `/multi-label-profile` (token-level)
+- Frontend Categorical Analysis page: auto-detects whether the selected column is multi-label or standard categorical and renders the appropriate bar chart (label frequencies vs category frequencies); reused the request-token race-condition guard from Day 11 proactively
+- Linked from the Column Types page (not tied to a specific recommendation, since categorical exploration is useful regardless of whether an issue was flagged)
+- Verified end to end on a real multi-label test dataset (movie genres): correctly auto-detected as `multi_label`, correct delimiter identified, correct vocabulary size and per-label counts

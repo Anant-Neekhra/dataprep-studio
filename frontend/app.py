@@ -154,11 +154,14 @@ async def column_types_page(dataset_id: str):
         ui.link("View Recommendations →", f"/recommendations/{dataset_id}").classes(
             "text-sm text-blue-600"
         )
+        ui.link("Categorical Analysis →", f"/categorical/{dataset_id}").classes(
+            "text-sm text-blue-600"
+        )
 
         table_container = ui.column().classes("w-full max-w-3xl gap-2")
 
         type_options = [
-            "numerical", "categorical", "boolean", "datetime", "text", "id", "mixed"
+            "numerical", "categorical", "boolean", "datetime", "text", "id", "multi_label", "mixed"
         ]
 
         async def load_column_types():
@@ -1018,3 +1021,106 @@ async def correlation_page(dataset_id: str):
         method_select.on("update:model-value", lambda: load_correlation())
         threshold_input.on("update:model-value", lambda: load_correlation())
         ui.timer(0.1, load_correlation, once=True)
+
+@ui.page("/categorical/{dataset_id}")
+async def categorical_page(dataset_id: str):
+    with ui.column().classes("items-center w-full mt-10 gap-4"):
+        ui.label("Categorical Analysis").classes("text-2xl font-bold")
+        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+            "text-sm text-gray-400"
+        )
+
+        column_select = ui.select([], label="Column").classes("w-80")
+
+        async def load_categorical_columns():
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(f"{BACKEND_URL}/datasets/{dataset_id}/column-types")
+                if response.status_code == 200:
+                    names = [
+                        c["column"] for c in response.json()
+                        if c["effective_type"] in ("categorical", "multi_label")
+                    ]
+                    column_select.set_options(names)
+                    if names:
+                        column_select.set_value(names[0])
+
+        ui.timer(0.1, load_categorical_columns, once=True)
+
+        result_container = ui.column().classes("w-full max-w-2xl gap-3")
+        request_id = {"value": 0}
+
+        async def load_analysis():
+            request_id["value"] += 1
+            my_id = request_id["value"]
+            if not column_select.value:
+                return
+
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                types_response = await client.get(
+                    f"{BACKEND_URL}/datasets/{dataset_id}/column-types"
+                )
+                col_info = next(
+                    (c for c in types_response.json() if c["column"] == column_select.value), None
+                )
+                is_multi_label = col_info and col_info["effective_type"] == "multi_label"
+
+                if is_multi_label:
+                    response = await client.get(
+                        f"{BACKEND_URL}/datasets/{dataset_id}/columns/{column_select.value}/multi-label-profile"
+                    )
+                else:
+                    response = await client.get(
+                        f"{BACKEND_URL}/datasets/{dataset_id}/columns/{column_select.value}/category-frequencies"
+                    )
+
+            if my_id != request_id["value"]:
+                return  # stale request, discard (same guard as Day 11)
+
+            result_container.clear()
+
+            if response.status_code != 200:
+                try:
+                    detail = response.json().get("detail", "Unknown error")
+                except Exception:
+                    detail = f"Request failed ({response.status_code})"
+                with result_container:
+                    ui.label(f"❌ {detail}").classes("text-red-600")
+                return
+
+            data = response.json()
+
+            with result_container:
+                if is_multi_label:
+                    with ui.card().classes("w-full"):
+                        ui.label(f"Multi-Label Column (delimiter: '{data['delimiter']}')").classes(
+                            "font-semibold"
+                        )
+                        ui.label(
+                            f"Vocabulary size: {data['vocabulary_size']}  |  "
+                            f"Avg labels per row: {data['avg_labels_per_row']}"
+                        ).classes("text-sm text-gray-600")
+
+                        labels = list(data["label_frequencies"].keys())
+                        counts = list(data["label_frequencies"].values())
+                        fig = go.Figure(data=[go.Bar(x=labels, y=counts)])
+                        fig.update_layout(
+                            title="Label Frequencies", height=350,
+                            margin=dict(l=20, r=20, t=40, b=20)
+                        )
+                        ui.plotly(fig).classes("w-full")
+                else:
+                    with ui.card().classes("w-full"):
+                        ui.label(f"{data['total_unique']} unique categories").classes(
+                            "font-semibold"
+                        )
+                        fig = go.Figure(
+                            data=[go.Bar(x=data["categories"], y=data["counts"])]
+                        )
+                        fig.update_layout(
+                            title="Category Frequencies", height=350,
+                            margin=dict(l=20, r=20, t=40, b=20)
+                        )
+                        ui.plotly(fig).classes("w-full")
+
+        column_select.on("update:model-value", lambda: load_analysis())
+        ui.timer(0.5, load_analysis, once=True)

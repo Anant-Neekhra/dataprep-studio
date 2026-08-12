@@ -1,0 +1,47 @@
+- id: scaling_normal_no_outliers
+  category: scaling
+  severity: low
+  applies_to: numerical
+  condition: "skewness >= -0.5 and skewness <= 0.5 and outlier_pct <= 1"
+  recommendation: "StandardScaler"
+  reason: "This column is roughly normally distributed with few outliers. StandardScaler (mean=0, unit variance) works well here and is the standard default for many ML algorithms that assume normally distributed input."
+  advantages:
+    - "Standard, well-understood, works well with most linear models and neural networks"
+  disadvantages:
+    - "Sensitive to outliers if any are present — since none are significant here, this isn't a concern"
+  alternatives:
+    - "MinMaxScaler (if you need values strictly bounded to [0, 1])"
+  docs_url: "https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.StandardScaler.html"
+
+- id: scaling_outliers_present
+  category: scaling
+  severity: medium
+  applies_to: numerical
+  condition: "outlier_pct > 1"
+  recommendation: "RobustScaler"
+  reason: "This column has a meaningful number of outliers (using the IQR method). RobustScaler uses median and IQR instead of mean and std, so it isn't distorted by extreme values the way StandardScaler or MinMaxScaler would be."
+  advantages:
+    - "Not skewed by outliers, unlike StandardScaler or MinMaxScaler"
+  disadvantages:
+    - "Resulting scale isn't as tightly bounded as MinMaxScaler"
+  alternatives:
+    - "StandardScaler (only if you plan to treat the outliers separately first)"
+    - "Consider outlier treatment first (see Outlier Analysis) before scaling"
+  docs_url: "https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.RobustScaler.html"
+
+- id: scaling_bounded_range_needed
+  category: scaling
+  severity: low
+  applies_to: numerical
+  condition: "minimum >= 0 and outlier_pct <= 1 and skewness > 0.5"
+  recommendation: "MinMaxScaler"
+  reason: "This column is non-negative and moderately skewed with few outliers — MinMaxScaler rescales to a fixed [0, 1] range, which some algorithms (e.g. neural networks with sigmoid activations) specifically expect."
+  advantages:
+    - "Guarantees output is bounded within [0, 1]"
+    - "Preserves the shape of the original distribution, unlike StandardScaler which changes it"
+  disadvantages:
+    - "Very sensitive to outliers — a single extreme value compresses everything else toward 0"
+  alternatives:
+    - "RobustScaler if outliers are present"
+    - "StandardScaler for general-purpose use"
+  docs_url: "https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.MinMaxScaler.html"

@@ -357,6 +357,15 @@ async def recommendations_page(dataset_id: str):
                                 "Go handle this →", f"/correlation/{dataset_id}"
                             ).classes("text-sm text-blue-600 mt-2")
 
+                        if rec["category"] == "encoding":
+                            ui.link(
+                                "Go handle this →", f"/encoding/{dataset_id}"
+                            ).classes("text-sm text-blue-600 mt-2")
+                        if rec["category"] == "scaling":
+                            ui.link(
+                                "Go handle this →", f"/scaling/{dataset_id}"
+                            ).classes("text-sm text-blue-600 mt-2")
+
         ui.timer(0.1, load_recommendations, once=True)
 
 IMPUTE_STRATEGIES = ["mean", "median", "mode", "constant", "forward_fill", "backward_fill", "drop_rows"]
@@ -1244,3 +1253,105 @@ async def inspect_page(dataset_id: str):
 
         column_select.on("update:model-value", lambda: load_report())
         ui.timer(0.5, load_report, once=True)
+
+ENCODING_METHODS = ["one_hot", "label", "ordinal", "frequency", "binary", "multi_label"]
+SCALING_METHODS_LIST = ["standard", "minmax", "robust", "maxabs", "normalize"]
+
+
+@ui.page("/encoding/{dataset_id}")
+async def encoding_page(dataset_id: str):
+    with ui.column().classes("items-center w-full mt-10 gap-4"):
+        ui.label("Encoding Advisor").classes("text-2xl font-bold")
+        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+            "text-sm text-gray-400"
+        )
+
+        column_select = ui.select([], label="Column").classes("w-80")
+        method_select = ui.select(ENCODING_METHODS, value="one_hot", label="Method").classes(
+            "w-80"
+        )
+        order_input = ui.input(
+            "Order (comma-separated, only for ordinal — e.g. Low,Medium,High)"
+        ).classes("w-80")
+
+        async def load_columns():
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(f"{BACKEND_URL}/datasets/{dataset_id}/column-types")
+                if response.status_code == 200:
+                    names = [
+                        c["column"] for c in response.json()
+                        if c["effective_type"] in ("categorical", "multi_label")
+                    ]
+                    column_select.set_options(names)
+                    if names:
+                        column_select.set_value(names[0])
+
+        ui.timer(0.1, load_columns, once=True)
+
+        async def do_encode():
+            body = {"method": method_select.value}
+            if method_select.value == "ordinal":
+                body["order"] = [s.strip() for s in order_input.value.split(",") if s.strip()]
+
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.post(
+                    f"{BACKEND_URL}/datasets/{dataset_id}/columns/{column_select.value}/encode/apply",
+                    json=body,
+                )
+                if response.status_code != 200:
+                    try:
+                        detail = response.json().get("detail", "Unknown error")
+                    except Exception:
+                        detail = f"Request failed ({response.status_code})"
+                    ui.notify(detail, type="negative")
+                    return
+                overview = response.json()
+            ui.notify(
+                f"Encoded. Dataset now has {overview['columns']} columns.", type="positive"
+            )
+
+        ui.button("Apply Encoding", on_click=do_encode).props("color=positive")
+
+
+@ui.page("/scaling/{dataset_id}")
+async def scaling_page(dataset_id: str):
+    with ui.column().classes("items-center w-full mt-10 gap-4"):
+        ui.label("Scaling Advisor").classes("text-2xl font-bold")
+        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+            "text-sm text-gray-400"
+        )
+
+        column_select = ui.select([], label="Numeric Column").classes("w-80")
+        method_select = ui.select(SCALING_METHODS_LIST, value="standard", label="Method").classes(
+            "w-80"
+        )
+
+        async def load_numeric_columns():
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(f"{BACKEND_URL}/datasets/{dataset_id}/column-types")
+                if response.status_code == 200:
+                    names = [
+                        c["column"] for c in response.json() if c["effective_type"] == "numerical"
+                    ]
+                    column_select.set_options(names)
+                    if names:
+                        column_select.set_value(names[0])
+
+        ui.timer(0.1, load_numeric_columns, once=True)
+
+        async def do_scale():
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.post(
+                    f"{BACKEND_URL}/datasets/{dataset_id}/columns/{column_select.value}/scale/apply",
+                    json={"method": method_select.value},
+                )
+                if response.status_code != 200:
+                    try:
+                        detail = response.json().get("detail", "Unknown error")
+                    except Exception:
+                        detail = f"Request failed ({response.status_code})"
+                    ui.notify(detail, type="negative")
+                    return
+            ui.notify("Scaling applied.", type="positive")
+
+        ui.button("Apply Scaling", on_click=do_scale).props("color=positive")

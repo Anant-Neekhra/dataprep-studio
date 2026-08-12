@@ -38,7 +38,9 @@ from app.schemas import (
     HighCorrelationPairs,
     CategoryFrequency, 
     MultiLabelProfile,
-    FeatureInspectorReport
+    FeatureInspectorReport,
+    EncodingRequest, 
+    ScalingRequest
 )
 from app.services.imputation_service import compare_strategies, impute_column_in_dataframe, preview_imputation
 from app.services.dataset_service import compute_overview, get_effective_type, drop_column
@@ -68,6 +70,16 @@ from app.services.categorical_service import (
     profile_multi_label_column,
 )
 from app.services.profiling_service import compute_entropy
+from app.services.encoding_service import (
+    binary_encode,
+    frequency_encode,
+    label_encode,
+    multi_label_binarize,
+    one_hot_encode,
+    ordinal_encode,
+)
+from app.services.scaling_service import apply_scaling
+from app.services.categorical_service import detect_multi_label_delimiter
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -603,3 +615,56 @@ def inspect_column(dataset_id: str, column: str) -> FeatureInspectorReport:
         recommendations=recommendations,
         possible_transformations=possible_transformations,
     )
+
+@router.post("/{dataset_id}/columns/{column}/encode/apply", response_model=DatasetOverview)
+def apply_encoding(dataset_id: str, column: str, body: EncodingRequest) -> DatasetOverview:
+    df = _get_df_or_404(dataset_id)
+    if column not in df.columns:
+        raise HTTPException(status_code=404, detail=f"Column '{column}' not found.")
+
+    try:
+        if body.method == "one_hot":
+            new_df = one_hot_encode(df, column)
+        elif body.method == "label":
+            new_df = label_encode(df, column)
+        elif body.method == "ordinal":
+            if not body.order:
+                raise ValueError("Ordinal encoding requires an 'order' list of categories.")
+            new_df = ordinal_encode(df, column, body.order)
+        elif body.method == "frequency":
+            new_df = frequency_encode(df, column)
+        elif body.method == "binary":
+            new_df = binary_encode(df, column)
+        elif body.method == "multi_label":
+            delimiter = body.delimiter or detect_multi_label_delimiter(df[column])
+            if delimiter is None:
+                raise ValueError("Could not detect a delimiter for multi-label binarization.")
+            new_df = multi_label_binarize(df, column, delimiter)
+        else:
+            raise ValueError(f"Unknown encoding method: {body.method}")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    dataset_store.update(dataset_id, new_df)
+
+    filename = dataset_store.get_filename(dataset_id)
+    overrides = dataset_store.get_overrides(dataset_id)
+    return compute_overview(dataset_id=dataset_id, filename=filename, df=new_df, overrides=overrides)
+
+
+@router.post("/{dataset_id}/columns/{column}/scale/apply", response_model=DatasetOverview)
+def apply_column_scaling(dataset_id: str, column: str, body: ScalingRequest) -> DatasetOverview:
+    df = _get_df_or_404(dataset_id)
+    if column not in df.columns:
+        raise HTTPException(status_code=404, detail=f"Column '{column}' not found.")
+
+    try:
+        new_df = apply_scaling(df, column, body.method)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    dataset_store.update(dataset_id, new_df)
+
+    filename = dataset_store.get_filename(dataset_id)
+    overrides = dataset_store.get_overrides(dataset_id)
+    return compute_overview(dataset_id=dataset_id, filename=filename, df=new_df, overrides=overrides)

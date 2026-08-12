@@ -22,12 +22,16 @@ def profile_column(series: pd.Series, column_name: str, effective_type: str) -> 
         "cardinality_ratio": round(unique_count / total, 4) if total else 0.0,
     }
 
-    # Compute numeric stats only when the EFFECTIVE type is numerical —
-    # this is the whole point of the override system. A column pandas
-    # sees as int64 but the user (or our ID heuristic) has marked as
-    # "id" should never get a mean/std/skewness computed on it, since
-    # those numbers would be meaningless (or actively misleading).
-    if effective_type == "numerical":
+    # Only attempt numeric stats if the effective type says numerical
+    # AND the actual underlying data can support numeric operations.
+    # These can disagree — e.g. a user overrides a column to
+    # "numerical" on the Column Types page, but the real values are
+    # still strings. Trusting effective_type alone here crashes on
+    # scipy's mean/skew calculations; checking the real dtype too
+    # makes this safe.
+    is_actually_numeric = pd.api.types.is_numeric_dtype(series)
+
+    if effective_type == "numerical" and is_actually_numeric:
         if len(non_null) >= 3:
             skewness = float(scipy_stats.skew(non_null))
             kurtosis = float(scipy_stats.kurtosis(non_null))
@@ -56,9 +60,6 @@ def profile_column(series: pd.Series, column_name: str, effective_type: str) -> 
             }
         )
     else:
-        # id / categorical / text / boolean / datetime / mixed all fall
-        # here — mode is still meaningful ("most common value"), but no
-        # mean/std/skew, since those don't mean anything for these types.
         mode_result = non_null.mode()
         profile_data["mode"] = str(mode_result.iloc[0]) if not mode_result.empty else None
 

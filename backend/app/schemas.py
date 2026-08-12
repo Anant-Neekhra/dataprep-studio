@@ -252,3 +252,12 @@ class FeatureInspectorReport(BaseModel):
     top_correlated_columns: list[dict]  # [{column, correlation}, ...], numeric only
     recommendations: list[Recommendation]
     possible_transformations: list[str]
+
+class EncodingRequest(BaseModel):
+    method: Literal["one_hot", "label", "ordinal", "frequency", "binary", "multi_label"]
+    order: list[str] | None = None  # required only for ordinal
+    delimiter: str | None = None    # required only for multi_label
+
+
+class ScalingRequest(BaseModel):
+    method: Literal["standard", "minmax", "robust", "maxabs", "normalize"]

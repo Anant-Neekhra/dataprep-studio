@@ -1,0 +1,68 @@
+- id: encoding_low_cardinality
+  category: encoding
+  severity: low
+  applies_to: categorical
+  condition: "unique_count <= 10"
+  recommendation: "One-Hot Encoding"
+  reason: "This column has few distinct categories (10 or fewer). One-hot encoding creates one binary column per category without adding excessive dimensionality."
+  advantages:
+    - "No implied ordinal relationship between categories, unlike label encoding"
+    - "Works well with linear models and most ML algorithms"
+  disadvantages:
+    - "Adds one new column per category — becomes impractical at high cardinality"
+  alternatives:
+    - "Label Encoding (if using a tree-based model, which handles integer-coded categories fine)"
+    - "Ordinal Encoding (only if categories have a genuine order)"
+  docs_url: "https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.OneHotEncoder.html"
+
+- id: encoding_high_cardinality
+  category: encoding
+  severity: medium
+  applies_to: categorical
+  condition: "unique_count > 10 and unique_count <= 50"
+  recommendation: "Frequency Encoding or Binary Encoding"
+  reason: "This column has moderately high cardinality (11-50 categories). One-hot encoding would add many columns; frequency or binary encoding keep dimensionality manageable."
+  advantages:
+    - "Frequency encoding is simple and captures how common each category is"
+    - "Binary encoding uses far fewer columns than one-hot (log2(n) instead of n)"
+  disadvantages:
+    - "Frequency encoding can lose information if two different categories happen to have the same frequency"
+    - "Binary-encoded columns are not individually interpretable"
+  alternatives:
+    - "One-Hot Encoding (if dimensionality isn't a concern)"
+    - "Target Encoding (uses the target variable — explanation only, not implemented, since this project stops before ML)"
+  docs_url: "https://contrib.scikit-learn.org/category_encoders/binary.html"
+
+- id: encoding_very_high_cardinality
+  category: encoding
+  severity: high
+  applies_to: categorical
+  condition: "unique_count > 50"
+  recommendation: "Reconsider this column — very high cardinality categorical data is hard to encode well"
+  reason: "With over 50 distinct categories, most encoding methods either explode in dimensionality (one-hot) or risk losing meaningful distinctions (frequency). Worth checking if this should actually be treated as an ID or text column instead."
+  advantages:
+    - "Binary Encoding still works reasonably well at this scale"
+  disadvantages:
+    - "One-Hot Encoding would add 50+ columns — usually impractical"
+    - "May indicate this column was misclassified — check if it's actually an ID or free-text field"
+  alternatives:
+    - "Binary Encoding"
+    - "Target Encoding (explanation only)"
+    - "Review whether this column should be typed as 'id' or 'text' instead (see Column Types page)"
+  docs_url: "https://contrib.scikit-learn.org/category_encoders/binary.html"
+
+- id: encoding_multi_label
+  category: encoding
+  severity: medium
+  applies_to: multi_label
+  condition: "count > 0"
+  recommendation: "Multi-Label Binarization"
+  reason: "This column holds multiple labels per row (e.g. genres, tags). Standard encoding methods assume one category per row and don't apply here — multi-label binarization creates one binary column per distinct label, correctly representing that a row can belong to several categories at once."
+  advantages:
+    - "Correctly represents multiple simultaneous category memberships per row"
+    - "Each resulting column is independently interpretable (e.g. 'genre_Action' = 1 or 0)"
+  disadvantages:
+    - "Adds one column per distinct label — can add many columns if the vocabulary is large"
+  alternatives:
+    - "Leave as text if you don't need to use these labels as ML features"
+  docs_url: "https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.MultiLabelBinarizer.html"

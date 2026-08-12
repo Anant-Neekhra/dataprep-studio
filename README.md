@@ -178,3 +178,14 @@ App at `http://localhost:8080`
 - Frontend Feature Inspector page: single-column deep-dive combining every card type built in prior days into one scrollable report
 - Linked from the Column Types page
 - Verified end to end: inspected a numeric column with missing values, outliers, and correlation — confirmed all sections populated correctly in one unified view
+
+### Day 14 — Encoding Advisor + Scaling Advisor
+- `services/encoding_service.py`: one-hot, label (deterministic alphabetical mapping), ordinal (user-specified order), frequency, binary (log2(n) columns instead of n), and **multi-label binarization** — the real applied version of what Day 12 only detected/profiled
+- `services/scaling_service.py`: StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler, Normalizer — all pure functions with input validation
+- `knowledge_base/encoding.yaml`: cardinality-tiered recommendations (≤10 → one-hot, 11-50 → frequency/binary, >50 → flags possible misclassification as id/text), dedicated multi-label rule
+- `knowledge_base/scaling.yaml`: rules based on skewness + outlier percentage (already-computed facts) — StandardScaler for clean normal data, RobustScaler when outliers are present, MinMaxScaler for bounded non-negative data
+- Encoding/scaling apply endpoints only (no preview) — column-count-changing operations like one-hot/binary/multi-label would need a meaningfully different preview response shape; deferred as a possible future enhancement
+- Frontend pages for both advisors, linked from Recommendation cards with `category == "encoding"` / `"scaling"`
+- Verified end to end: one-hot encoding correctly expanded column count, multi-label binarization correctly expanded a genres-style column into per-label binary columns
+
+**Bug found and fixed:** `profile_column()` trusted `effective_type == "numerical"` without checking whether the column's actual underlying values could support numeric math. Manually overriding a column's logical type (Day 3 feature) to "numerical" doesn't convert the underlying string data — a real-world dataset (`anime.csv`, `episodes` column containing literal `"Unknown"` strings mixed with numeric-looking strings) triggered a 500 error on `/recommendations` when scipy tried to compute skewness on string data. Fixed by requiring both `effective_type == "numerical"` AND `pd.api.types.is_numeric_dtype(series)` before attempting numeric stats — a type/data mismatch now gracefully falls back to mode-only profiling instead of crashing. Root cause resolved by using the Datatype Analyzer (`pd.to_numeric(errors="coerce")`) to properly convert the column, correctly surfacing "Unknown" values as missing data to be handled through the normal Missing Value Engine.

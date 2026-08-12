@@ -1,0 +1,78 @@
+- id: fe_datetime_extraction
+  category: feature_engineering
+  severity: low
+  applies_to: datetime
+  condition: "count > 0"
+  recommendation: "Extract date features: year, month, day of week"
+  reason: "A datetime column often carries more signal when broken into its components — many patterns (seasonality, weekday effects) are easier for models to learn from separate year/month/day-of-week columns than from a single timestamp."
+  advantages:
+    - "Exposes seasonal and cyclical patterns directly as features"
+    - "Simple to compute with pandas' .dt accessor"
+  disadvantages:
+    - "Adds several new columns — consider which components are actually relevant to your problem"
+  alternatives:
+    - "Cyclic encoding (sin/cos of month or day) if the cyclical nature matters more than raw values"
+  docs_url: "https://pandas.pydata.org/docs/reference/api/pandas.Series.dt.html"
+
+- id: fe_age_calculation
+  category: feature_engineering
+  severity: low
+  applies_to: datetime
+  condition: "count > 0"
+  recommendation: "Consider calculating age/duration from this date (e.g. days since this date)"
+  reason: "If this column represents a starting event (birth date, signup date, purchase date), the raw date is often less useful than the duration since that date relative to today or another reference date."
+  advantages:
+    - "Converts an absolute date into a directly meaningful numeric feature"
+  disadvantages:
+    - "Only meaningful if a sensible reference point exists (e.g. 'today', or another date column in the dataset)"
+  alternatives:
+    - "Leave as raw datetime if the specific calendar date matters more than elapsed time"
+  docs_url: "https://pandas.pydata.org/docs/reference/api/pandas.Timestamp.html"
+
+- id: fe_text_length
+  category: feature_engineering
+  severity: low
+  applies_to: text
+  condition: "count > 0"
+  recommendation: "Consider extracting text length or word count as a numeric feature"
+  reason: "Free-text columns can't be used directly by most ML methods without NLP techniques (outside this project's scope), but simple derived features like character count or word count are cheap to compute and sometimes carry real signal (e.g. longer product descriptions correlating with price)."
+  advantages:
+    - "Cheap to compute, doesn't require any NLP library"
+    - "Can capture meaningful signal in some domains (review length, description detail)"
+  disadvantages:
+    - "Loses all semantic content of the text — only captures length, not meaning"
+  alternatives:
+    - "Full NLP vectorization (TF-IDF, embeddings) — outside this project's scope"
+  docs_url: "https://pandas.pydata.org/docs/reference/api/pandas.Series.str.len.html"
+
+- id: fe_binning_suggestion
+  category: feature_engineering
+  severity: low
+  applies_to: numerical
+  condition: "unique_count > 20"
+  recommendation: "Consider binning this column into ranges (e.g. age groups)"
+  reason: "This numeric column has many distinct values. Binning into categories (e.g. 0-18, 19-35, 36-60, 60+) can sometimes reveal non-linear patterns more clearly than the raw continuous value, and can help some models that struggle with continuous features."
+  advantages:
+    - "Can expose threshold effects that aren't linear in the raw value"
+    - "Makes the feature more interpretable in some contexts (e.g. age groups vs raw age)"
+  disadvantages:
+    - "Loses precision — two values in the same bin become indistinguishable"
+    - "Bin boundaries are somewhat arbitrary unless chosen carefully"
+  alternatives:
+    - "Leave as continuous if using a model that handles continuous features well (most modern methods do)"
+  docs_url: "https://pandas.pydata.org/docs/reference/generated/pandas.cut.html"
+
+- id: fe_cyclic_encoding
+  category: feature_engineering
+  severity: low
+  applies_to: numerical
+  condition: "minimum >= 0 and maximum <= 31 and unique_count <= 31 and unique_count > 5"
+  recommendation: "Consider cyclic encoding (sin/cos transform) if this represents a cyclical value"
+  reason: "If this column represents something cyclical (day of month, hour of day, month of year), its raw numeric value misrepresents the actual relationships — e.g. day 31 and day 1 are numerically far apart but calendar-adjacent. Cyclic (sin/cos) encoding preserves that adjacency."
+  advantages:
+    - "Correctly represents wraparound relationships (e.g. December and January being adjacent)"
+  disadvantages:
+    - "Only appropriate if the column is genuinely cyclical — check this isn't a false positive based purely on value range"
+  alternatives:
+    - "Leave as-is if the column isn't actually cyclical in nature"
+  docs_url: "https://scikit-learn.org/stable/auto_examples/applications/plot_cyclical_feature_engineering.html"

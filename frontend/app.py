@@ -6,6 +6,28 @@ import plotly.graph_objects as go
 
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
 
+def dataset_nav_links(dataset_id: str, current_page: str = ""):
+    """
+    Renders a consistent set of cross-links to every dataset-scoped page.
+    Called at the top of every page below Upload, so navigation is
+    identical everywhere instead of ad-hoc per page. current_page can be
+    used to skip linking to the page you're already on.
+    """
+    links = [
+        ("Column Types & Drop Columns", "column-types"),
+        ("Recommendations", "recommendations"),
+        ("Correlation Analysis", "correlation"),
+        ("Categorical Analysis", "categorical"),
+        ("Feature Inspector", "inspect"),
+        ("Visualization Center", "visualize"),
+    ]
+    with ui.row().classes("gap-4 flex-wrap justify-center max-w-2xl"):
+        for label, path in links:
+            if path == current_page:
+                continue
+            ui.link(f"{label} →", f"/{path}/{dataset_id}").classes(
+                "text-sm text-blue-600"
+            )
 
 @ui.page("/")
 async def main_page():
@@ -151,15 +173,7 @@ async def column_types_page(dataset_id: str):
             "Review and override below."
         ).classes("text-sm text-gray-400 text-center max-w-xl")
         ui.link("← Back to upload", "/upload").classes("text-sm text-gray-400")
-        ui.link("View Recommendations →", f"/recommendations/{dataset_id}").classes(
-            "text-sm text-blue-600"
-        )
-        ui.link("Categorical Analysis →", f"/categorical/{dataset_id}").classes(
-            "text-sm text-blue-600"
-        )
-        ui.link("Feature Inspector →", f"/inspect/{dataset_id}").classes(
-            "text-sm text-blue-600"
-        )
+        dataset_nav_links(dataset_id, current_page="column-types")
 
         table_container = ui.column().classes("w-full max-w-3xl gap-2")
 
@@ -259,12 +273,7 @@ async def recommendations_page(dataset_id: str):
             "not AI. Expand any card to see the full reasoning."
         ).classes("text-sm text-gray-400 text-center max-w-xl")
         ui.link("← Back to upload", "/upload").classes("text-sm text-gray-400")
-        ui.link("Column Types & Drop Columns →", f"/column-types/{dataset_id}").classes(
-            "text-sm text-blue-600"
-        )
-        ui.link("Correlation Analysis →", f"/correlation/{dataset_id}").classes(
-            "text-sm text-blue-600"
-        )
+        dataset_nav_links(dataset_id, current_page="recommendations")
 
         cards_container = ui.column().classes("w-full max-w-3xl gap-3")
 
@@ -1355,3 +1364,153 @@ async def scaling_page(dataset_id: str):
             ui.notify("Scaling applied.", type="positive")
 
         ui.button("Apply Scaling", on_click=do_scale).props("color=positive")
+
+@ui.page("/visualize/{dataset_id}")
+async def visualize_page(dataset_id: str):
+    with ui.column().classes("items-center w-full mt-10 gap-4"):
+        ui.label("Visualization Center").classes("text-2xl font-bold")
+        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+            "text-sm text-gray-400"
+        )
+
+        all_columns = {"value": []}
+        numeric_columns = {"value": []}
+        categorical_columns = {"value": []}
+
+        async def load_column_lists():
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(f"{BACKEND_URL}/datasets/{dataset_id}/column-types")
+                if response.status_code == 200:
+                    cols = response.json()
+                    all_columns["value"] = [c["column"] for c in cols]
+                    numeric_columns["value"] = [
+                        c["column"] for c in cols if c["effective_type"] == "numerical"
+                    ]
+                    categorical_columns["value"] = [
+                        c["column"] for c in cols if c["effective_type"] in ("categorical", "boolean")
+                    ]
+
+        await load_column_lists()
+
+        with ui.tabs().classes("w-full") as tabs:
+            scatter_tab = ui.tab("Scatter Plot")
+            box_tab = ui.tab("Box Plot")
+            bar_tab = ui.tab("Bar Chart")
+            pie_tab = ui.tab("Pie Chart")
+
+        with ui.tab_panels(tabs, value=scatter_tab).classes("w-full max-w-3xl"):
+
+            with ui.tab_panel(scatter_tab):
+                ui.label(
+                    "When to use: exploring the relationship between two numeric variables. "
+                    "What to observe: linear/non-linear trends, clusters, or outlier points."
+                ).classes("text-xs text-gray-500 mb-2")
+                with ui.row().classes("gap-2"):
+                    x_select = ui.select(numeric_columns["value"], label="X axis").classes("w-60")
+                    y_select = ui.select(numeric_columns["value"], label="Y axis").classes("w-60")
+                scatter_container = ui.column().classes("w-full")
+
+                async def load_scatter():
+                    if not x_select.value or not y_select.value:
+                        return
+                    scatter_container.clear()
+                    async with httpx.AsyncClient(timeout=15.0) as client:
+                        response = await client.get(
+                            f"{BACKEND_URL}/datasets/{dataset_id}/visualize/scatter",
+                            params={"x_column": x_select.value, "y_column": y_select.value},
+                        )
+                    if response.status_code == 200:
+                        data = response.json()
+                        fig = go.Figure(
+                            data=go.Scatter(
+                                x=data["x_values"], y=data["y_values"], mode="markers",
+                                marker=dict(size=5, opacity=0.6),
+                            )
+                        )
+                        fig.update_layout(
+                            xaxis_title=data["x_column"], yaxis_title=data["y_column"],
+                            height=400, margin=dict(l=20, r=20, t=20, b=20),
+                        )
+                        with scatter_container:
+                            ui.plotly(fig).classes("w-full")
+
+                x_select.on("update:model-value", lambda: load_scatter())
+                y_select.on("update:model-value", lambda: load_scatter())
+
+            with ui.tab_panel(box_tab):
+                ui.label(
+                    "When to use: understanding spread and spotting outliers in a numeric column. "
+                    "What to observe: box height (IQR), whisker length, and points beyond the whiskers."
+                ).classes("text-xs text-gray-500 mb-2")
+                box_select = ui.select(numeric_columns["value"], label="Column").classes("w-60")
+                box_container = ui.column().classes("w-full")
+
+                async def load_box():
+                    if not box_select.value:
+                        return
+                    box_container.clear()
+                    async with httpx.AsyncClient(timeout=15.0) as client:
+                        response = await client.get(
+                            f"{BACKEND_URL}/datasets/{dataset_id}/visualize/boxplot",
+                            params={"column": box_select.value},
+                        )
+                    if response.status_code == 200:
+                        data = response.json()
+                        fig = go.Figure(data=go.Box(y=data["values"], name=data["column"]))
+                        fig.update_layout(height=400, margin=dict(l=20, r=20, t=20, b=20))
+                        with box_container:
+                            ui.plotly(fig).classes("w-full")
+
+                box_select.on("update:model-value", lambda: load_box())
+
+            with ui.tab_panel(bar_tab):
+                ui.label(
+                    "When to use: comparing frequency across categories. "
+                    "What to observe: which categories dominate, and whether any are rare."
+                ).classes("text-xs text-gray-500 mb-2")
+                bar_select = ui.select(categorical_columns["value"], label="Column").classes("w-60")
+                bar_container = ui.column().classes("w-full")
+
+                async def load_bar():
+                    if not bar_select.value:
+                        return
+                    bar_container.clear()
+                    async with httpx.AsyncClient(timeout=15.0) as client:
+                        response = await client.get(
+                            f"{BACKEND_URL}/datasets/{dataset_id}/columns/{bar_select.value}/category-frequencies"
+                        )
+                    if response.status_code == 200:
+                        data = response.json()
+                        fig = go.Figure(data=go.Bar(x=data["categories"], y=data["counts"]))
+                        fig.update_layout(height=400, margin=dict(l=20, r=20, t=20, b=20))
+                        with bar_container:
+                            ui.plotly(fig).classes("w-full")
+
+                bar_select.on("update:model-value", lambda: load_bar())
+
+            with ui.tab_panel(pie_tab):
+                ui.label(
+                    "When to use: showing proportional share among a SMALL number of categories. "
+                    "What to observe: relative size of each slice — avoid for high-cardinality columns."
+                ).classes("text-xs text-gray-500 mb-2")
+                pie_select = ui.select(categorical_columns["value"], label="Column").classes("w-60")
+                pie_container = ui.column().classes("w-full")
+
+                async def load_pie():
+                    if not pie_select.value:
+                        return
+                    pie_container.clear()
+                    async with httpx.AsyncClient(timeout=15.0) as client:
+                        response = await client.get(
+                            f"{BACKEND_URL}/datasets/{dataset_id}/columns/{pie_select.value}/category-frequencies"
+                        )
+                    if response.status_code == 200:
+                        data = response.json()
+                        fig = go.Figure(
+                            data=go.Pie(labels=data["categories"], values=data["counts"])
+                        )
+                        fig.update_layout(height=400, margin=dict(l=20, r=20, t=20, b=20))
+                        with pie_container:
+                            ui.plotly(fig).classes("w-full")
+
+                pie_select.on("update:model-value", lambda: load_pie())

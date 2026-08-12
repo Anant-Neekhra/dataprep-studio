@@ -9,6 +9,7 @@ from typing import Literal
 from app.rule_engine.engine import evaluate_dataset_rules, evaluate_rules
 from app.rule_engine.facts import build_dataset_facts, build_facts
 from app.schemas import (
+    BoxPlotData,
     ColumnTypeInfo,
     CompareStrategiesRequest,
     CompareStrategiesResponse,
@@ -22,6 +23,7 @@ from app.schemas import (
     Recommendation,
     RemoveDuplicateColumnsRequest,
     RemoveDuplicateRowsRequest,
+    ScatterData,
     TypeOverrideRequest,
     UploadResponse,
     DtypeConversionPreview,
@@ -668,3 +670,44 @@ def apply_column_scaling(dataset_id: str, column: str, body: ScalingRequest) -> 
     filename = dataset_store.get_filename(dataset_id)
     overrides = dataset_store.get_overrides(dataset_id)
     return compute_overview(dataset_id=dataset_id, filename=filename, df=new_df, overrides=overrides)
+
+@router.get("/{dataset_id}/visualize/scatter", response_model=ScatterData)
+def get_scatter_data(dataset_id: str, x_column: str, y_column: str) -> ScatterData:
+    df = _get_df_or_404(dataset_id)
+    for col in (x_column, y_column):
+        if col not in df.columns:
+            raise HTTPException(status_code=404, detail=f"Column '{col}' not found.")
+
+    subset = df[[x_column, y_column]].dropna()
+    # Cap sample size — scatter plots with tens of thousands of points
+    # render slowly and add little visual value beyond a few thousand.
+    if len(subset) > 3000:
+        subset = subset.sample(3000, random_state=42)
+
+    return ScatterData(
+        x_values=subset[x_column].tolist(),
+        y_values=subset[y_column].tolist(),
+        x_column=x_column,
+        y_column=y_column,
+    )
+
+
+@router.get("/{dataset_id}/visualize/boxplot", response_model=BoxPlotData)
+def get_boxplot_data(dataset_id: str, column: str) -> BoxPlotData:
+    df = _get_df_or_404(dataset_id)
+    if column not in df.columns:
+        raise HTTPException(status_code=404, detail=f"Column '{column}' not found.")
+
+    series = df[column].dropna()
+    if not pd.api.types.is_numeric_dtype(series):
+        raise HTTPException(status_code=400, detail="Box plot requires a numeric column.")
+
+    return BoxPlotData(
+        column=column,
+        values=series.tolist()[:3000],
+        q1=float(series.quantile(0.25)),
+        median=float(series.median()),
+        q3=float(series.quantile(0.75)),
+        minimum=float(series.min()),
+        maximum=float(series.max()),
+    )

@@ -261,3 +261,19 @@ class EncodingRequest(BaseModel):
 
 class ScalingRequest(BaseModel):
     method: Literal["standard", "minmax", "robust", "maxabs", "normalize"]
+
+class ScatterData(BaseModel):
+    x_values: list
+    y_values: list
+    x_column: str
+    y_column: str
+
+
+class BoxPlotData(BaseModel):
+    column: str
+    values: list[float]
+    q1: float
+    median: float
+    q3: float
+    minimum: float
+    maximum: float

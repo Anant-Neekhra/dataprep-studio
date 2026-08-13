@@ -219,3 +219,14 @@ App at `http://localhost:8080`
 - Frontend Pipeline page: numbered, ordered list of every transformation applied to the dataset
 - **Scope decision**: true drag-and-reorder-with-replay was deliberately deferred to Day 18, since it requires a "replay engine" (re-execute a list of operations against fresh data) that Day 18's Python script export needs identically — building it once, at the point where both features can share it, rather than duplicating the logic across two days
 - Verified end to end: applied several different transformation types, confirmed `/history` correctly returns structured operation/params for each, confirmed the Pipeline page renders them in correct order
+
+### Day 18 — Pipeline Replay Engine + Export Module
+- `services/pipeline_service.py`: a single operation registry (`execute_operation`) mapping every operation name to its actual service function — one source of truth used by both pipeline reordering and (indirectly) script generation, avoiding logic duplicated across features
+- `replay_pipeline()`: re-executes a list of recorded steps against the *original* uploaded data (version 1), enabling true reordering rather than just reading history
+- `GET /pipeline/replay-check`: sanity-check endpoint comparing a full replay against the live current dataset — used to verify the operation registry completely and correctly mirrors every transformation the app can perform
+- `POST /pipeline/reorder`: replays steps in a user-specified order; failures (e.g. encoding a column before its required dtype conversion) surface a clear, specific error rather than a stack trace
+- Frontend Pipeline page: up/down reordering (chosen over full drag-and-drop after weighing implementation risk — NiceGUI has no built-in drag-reorder component, and a JS library integration was a larger investment than the up/down approach for the same functional outcome) with an explicit "Apply New Order" step that triggers the real backend replay
+- `services/export_service.py`: CSV, Parquet, pipeline-as-JSON, pipeline-as-YAML, and a **Python script generator** — walks recorded pipeline steps and emits equivalent, dependency-free pandas/numpy/scipy code (outlier treatment steps emit an honest comment rather than inlined boundary-computation logic, since getting that subtly wrong would be worse than a disclosed limitation)
+- Five export endpoints returning downloadable files via FastAPI `Response` with proper `Content-Disposition` headers
+- Frontend Export page with direct download buttons for all five formats
+- Verified end to end: replay-check confirmed exact match with live data, reordering correctly re-applied steps from scratch, all five export formats downloaded with correct content, generated Python script inspected and confirmed to accurately reproduce applied transformations

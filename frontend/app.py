@@ -22,6 +22,7 @@ def dataset_nav_links(dataset_id: str, current_page: str = ""):
         ("Visualization Center", "visualize"),
         ("Version History", "history"),
         ("Pipeline View", "pipeline"),
+        ("Export", "export"),
     ]
     with ui.row().classes("gap-4 flex-wrap justify-center max-w-2xl"):
         for label, path in links:
@@ -1657,13 +1658,14 @@ async def pipeline_page(dataset_id: str):
         ui.label("Pipeline").classes("text-2xl font-bold")
         ui.label(
             "Every transformation applied to this dataset, in order. "
-            "This is exactly what Day 18's export will turn into a Python script."
+            "Use the arrows to reorder — this re-runs every step from the original data."
         ).classes("text-sm text-gray-400 text-center max-w-xl")
         ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
             "text-sm text-gray-400"
         )
 
         pipeline_container = ui.column().classes("w-full max-w-2xl gap-2")
+        pipeline_state = {"steps": []}
 
         async def load_pipeline():
             pipeline_container.clear()
@@ -1675,25 +1677,138 @@ async def pipeline_page(dataset_id: str):
                     return
                 pipeline = response.json()
 
-            with pipeline_container:
-                if not pipeline["steps"]:
+            pipeline_state["steps"] = pipeline["steps"]
+            render_steps()
+
+        def render_steps():
+            pipeline_container.clear()
+            steps = pipeline_state["steps"]
+
+            if not steps:
+                with pipeline_container:
                     ui.label(
                         "No transformations applied yet. Apply something from "
                         "Recommendations to see it appear here."
                     ).classes("text-sm text-gray-500")
-                    return
+                return
 
-                for i, step in enumerate(pipeline["steps"], start=1):
+            with pipeline_container:
+                for i, step in enumerate(steps):
                     with ui.card().classes("w-full"):
-                        with ui.row().classes("items-center gap-3"):
-                            ui.label(f"{i}").classes(
-                                "text-lg font-bold text-blue-600 w-6"
-                            )
-                            with ui.column().classes("gap-0"):
-                                ui.label(step["description"]).classes("font-semibold")
-                                if step["operation"]:
-                                    ui.label(f"operation: {step['operation']}").classes(
-                                        "text-xs text-gray-400"
-                                    )
+                        with ui.row().classes("items-center gap-3 justify-between w-full"):
+                            with ui.row().classes("items-center gap-3"):
+                                ui.label(f"{i + 1}").classes(
+                                    "text-lg font-bold text-blue-600 w-6"
+                                )
+                                with ui.column().classes("gap-0"):
+                                    ui.label(step["description"]).classes("font-semibold")
+                                    if step["operation"]:
+                                        ui.label(f"operation: {step['operation']}").classes(
+                                            "text-xs text-gray-400"
+                                        )
+
+                            with ui.row().classes("gap-1"):
+                                up_btn = ui.button(icon="arrow_upward").props(
+                                    "flat dense round size=sm"
+                                )
+                                down_btn = ui.button(icon="arrow_downward").props(
+                                    "flat dense round size=sm"
+                                )
+                                if i == 0:
+                                    up_btn.disable()
+                                if i == len(steps) - 1:
+                                    down_btn.disable()
+
+                                def move_up(index=i):
+                                    steps[index], steps[index - 1] = steps[index - 1], steps[index]
+                                    render_steps()
+
+                                def move_down(index=i):
+                                    steps[index], steps[index + 1] = steps[index + 1], steps[index]
+                                    render_steps()
+
+                                up_btn.on_click(move_up)
+                                down_btn.on_click(move_down)
+
+                async def apply_new_order():
+                    version_order = [s["version_num"] for s in pipeline_state["steps"]]
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        response = await client.post(
+                            f"{BACKEND_URL}/datasets/{dataset_id}/pipeline/reorder",
+                            json={"version_order": version_order},
+                        )
+                        if response.status_code != 200:
+                            try:
+                                detail = response.json().get("detail", "Unknown error")
+                            except Exception:
+                                detail = f"Request failed ({response.status_code})"
+                            ui.notify(detail, type="negative", timeout=8000)
+                            return
+                    ui.notify("Pipeline reordered and re-applied.", type="positive")
+                    await load_pipeline()
+
+                ui.button("Apply New Order", on_click=apply_new_order).props(
+                    "color=positive"
+                ).classes("mt-2")
 
         ui.timer(0.1, load_pipeline, once=True)
+
+@ui.page("/export/{dataset_id}")
+async def export_page(dataset_id: str):
+    with ui.column().classes("items-center w-full mt-10 gap-4"):
+        ui.label("Export").classes("text-2xl font-bold")
+        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+            "text-sm text-gray-400"
+        )
+
+        with ui.column().classes("w-full max-w-md gap-3"):
+            with ui.card().classes("w-full"):
+                ui.label("Processed Data").classes("font-semibold")
+                ui.label("The current state of your dataset, ready for use elsewhere.").classes(
+                    "text-sm text-gray-500 mb-2"
+                )
+                with ui.row().classes("gap-2"):
+                    ui.button(
+                        "Download CSV",
+                        on_click=lambda: ui.navigate.to(
+                            f"{BACKEND_URL}/datasets/{dataset_id}/export/csv", new_tab=True
+                        ),
+                    )
+                    ui.button(
+                        "Download Parquet",
+                        on_click=lambda: ui.navigate.to(
+                            f"{BACKEND_URL}/datasets/{dataset_id}/export/parquet", new_tab=True
+                        ),
+                    )
+
+            with ui.card().classes("w-full"):
+                ui.label("Pipeline Definition").classes("font-semibold")
+                ui.label("Every transformation applied, as structured data.").classes(
+                    "text-sm text-gray-500 mb-2"
+                )
+                with ui.row().classes("gap-2"):
+                    ui.button(
+                        "Download JSON",
+                        on_click=lambda: ui.navigate.to(
+                            f"{BACKEND_URL}/datasets/{dataset_id}/export/pipeline-json", new_tab=True
+                        ),
+                    )
+                    ui.button(
+                        "Download YAML",
+                        on_click=lambda: ui.navigate.to(
+                            f"{BACKEND_URL}/datasets/{dataset_id}/export/pipeline-yaml", new_tab=True
+                        ),
+                    )
+
+            with ui.card().classes("w-full"):
+                ui.label("Reproducible Python Script").classes("font-semibold")
+                ui.label(
+                    "A standalone .py file that reproduces your pipeline using plain "
+                    "pandas/numpy/scipy — no dependency on this app."
+                ).classes("text-sm text-gray-500 mb-2")
+                ui.button(
+                    "Download Script",
+                    on_click=lambda: ui.navigate.to(
+                        f"{BACKEND_URL}/datasets/{dataset_id}/export/pipeline-script", new_tab=True
+                    ),
+                ).props("color=positive")

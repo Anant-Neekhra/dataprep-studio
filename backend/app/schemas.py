@@ -312,3 +312,12 @@ class PipelineStep(BaseModel):
 class PipelineView(BaseModel):
     dataset_id: str
     steps: list[PipelineStep]
+
+class ReorderPipelineRequest(BaseModel):
+    version_order: list[int]  # the version_nums, in the new desired order
+
+
+class ReplayCheckResult(BaseModel):
+    matches_current: bool
+    current_shape: list[int]
+    replayed_shape: list[int]

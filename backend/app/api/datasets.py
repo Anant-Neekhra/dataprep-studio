@@ -48,7 +48,9 @@ from app.schemas import (
     EncodingRequest, 
     ScalingRequest,
     VersionHistory, 
-    VersionInfo
+    VersionInfo,
+    ReorderPipelineRequest, 
+    ReplayCheckResult,
 )
 from app.services.imputation_service import compare_strategies, impute_column_in_dataframe, preview_imputation
 from app.services.dataset_service import compute_overview, get_effective_type, drop_column
@@ -88,6 +90,15 @@ from app.services.encoding_service import (
 )
 from app.services.scaling_service import apply_scaling
 from app.services.categorical_service import detect_multi_label_delimiter
+from app.services.pipeline_service import replay_pipeline
+from fastapi import Response
+from app.services.export_service import (
+    export_to_csv_bytes,
+    export_to_parquet_bytes,
+    export_pipeline_to_json,
+    export_pipeline_to_yaml,
+    generate_pipeline_script,
+)
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -851,3 +862,133 @@ def get_pipeline(dataset_id: str) -> PipelineView:
         if h["version_num"] > 1
     ]
     return PipelineView(dataset_id=dataset_id, steps=steps)
+
+@router.post("/{dataset_id}/pipeline/reorder", response_model=DatasetOverview)
+def reorder_pipeline(dataset_id: str, body: ReorderPipelineRequest) -> DatasetOverview:
+    if not dataset_store.exists(dataset_id):
+        raise HTTPException(status_code=404, detail="Dataset not found.")
+
+    original_df = dataset_store.get_version(dataset_id, 1)
+    if original_df is None:
+        raise HTTPException(status_code=404, detail="Original version not found.")
+
+    history = dataset_store.get_history(dataset_id)
+    steps_by_version = {h["version_num"]: h for h in history}
+
+    missing = [v for v in body.version_order if v not in steps_by_version]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Unknown version numbers: {missing}")
+
+    ordered_steps = [steps_by_version[v] for v in body.version_order]
+
+    try:
+        new_df = replay_pipeline(original_df, ordered_steps)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Reordering failed — this order isn't valid (a later step likely depends on "
+                   f"an earlier one, e.g. encoding a column before it's converted to the right type). "
+                   f"Error: {e}",
+        )
+
+    dataset_store.update(
+        dataset_id, new_df,
+        description="Pipeline reordered",
+        operation="reorder",
+        operation_params={"version_order": body.version_order},
+    )
+
+    filename = dataset_store.get_filename(dataset_id)
+    overrides = dataset_store.get_overrides(dataset_id)
+    return compute_overview(dataset_id=dataset_id, filename=filename, df=new_df, overrides=overrides)
+
+
+@router.get("/{dataset_id}/pipeline/replay-check", response_model=ReplayCheckResult)
+def check_replay_matches_current(dataset_id: str) -> ReplayCheckResult:
+    """
+    Sanity check: replays the full recorded pipeline from the original
+    data and compares its shape to the actual current dataset. If they
+    don't match, it means some transformation isn't being recorded
+    completely/correctly — genuinely useful for catching bugs in the
+    operation registry itself.
+    """
+    current_df = dataset_store.get(dataset_id)
+    if current_df is None:
+        raise HTTPException(status_code=404, detail="Dataset not found.")
+
+    original_df = dataset_store.get_version(dataset_id, 1)
+    history = dataset_store.get_history(dataset_id)
+    steps = [h for h in history if h["version_num"] > 1]
+
+    replayed_df = replay_pipeline(original_df, steps)
+
+    return ReplayCheckResult(
+        matches_current=(replayed_df.shape == current_df.shape),
+        current_shape=list(current_df.shape),
+        replayed_shape=list(replayed_df.shape),
+    )
+
+@router.get("/{dataset_id}/export/csv")
+def export_csv(dataset_id: str):
+    df = _get_df_or_404(dataset_id)
+    filename = dataset_store.get_filename(dataset_id) or "dataset"
+    content = export_to_csv_bytes(df)
+    return Response(
+        content=content,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}_processed.csv"'},
+    )
+
+
+@router.get("/{dataset_id}/export/parquet")
+def export_parquet(dataset_id: str):
+    df = _get_df_or_404(dataset_id)
+    filename = dataset_store.get_filename(dataset_id) or "dataset"
+    content = export_to_parquet_bytes(df)
+    return Response(
+        content=content,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{filename}_processed.parquet"'},
+    )
+
+
+@router.get("/{dataset_id}/export/pipeline-json")
+def export_pipeline_json(dataset_id: str):
+    if not dataset_store.exists(dataset_id):
+        raise HTTPException(status_code=404, detail="Dataset not found.")
+    history = dataset_store.get_history(dataset_id)
+    steps = [h for h in history if h["version_num"] > 1]
+    content = export_pipeline_to_json(steps)
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={"Content-Disposition": 'attachment; filename="pipeline.json"'},
+    )
+
+
+@router.get("/{dataset_id}/export/pipeline-yaml")
+def export_pipeline_yaml(dataset_id: str):
+    if not dataset_store.exists(dataset_id):
+        raise HTTPException(status_code=404, detail="Dataset not found.")
+    history = dataset_store.get_history(dataset_id)
+    steps = [h for h in history if h["version_num"] > 1]
+    content = export_pipeline_to_yaml(steps)
+    return Response(
+        content=content,
+        media_type="application/x-yaml",
+        headers={"Content-Disposition": 'attachment; filename="pipeline.yaml"'},
+    )
+
+
+@router.get("/{dataset_id}/export/pipeline-script")
+def export_pipeline_script(dataset_id: str):
+    if not dataset_store.exists(dataset_id):
+        raise HTTPException(status_code=404, detail="Dataset not found.")
+    history = dataset_store.get_history(dataset_id)
+    steps = [h for h in history if h["version_num"] > 1]
+    content = generate_pipeline_script(steps)
+    return Response(
+        content=content,
+        media_type="text/x-python",
+        headers={"Content-Disposition": 'attachment; filename="preprocessing_pipeline.py"'},
+    )

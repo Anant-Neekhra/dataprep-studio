@@ -265,5 +265,16 @@ class DatasetStore:
         finally:
             conn.close()
 
+    def get_version(self, dataset_id: str, version_num: int) -> pd.DataFrame | None:
+        conn = get_connection()
+        try:
+            row = conn.execute(
+                "SELECT data FROM dataset_versions WHERE dataset_id = ? AND version_num = ?",
+                (dataset_id, version_num),
+            ).fetchone()
+            return bytes_to_dataframe(row["data"]) if row else None
+        finally:
+            conn.close()
+
 
 dataset_store = DatasetStore()

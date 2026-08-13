@@ -13,8 +13,10 @@ from app.schemas import (
     ColumnTypeInfo,
     CompareStrategiesRequest,
     CompareStrategiesResponse,
+    DatasetList,
     DatasetOverview,
     DatasetProfile,
+    DatasetSummary,
     DuplicateColumnPair,
     DuplicateColumnsPreview,
     DuplicateRowsPreview,
@@ -42,7 +44,9 @@ from app.schemas import (
     MultiLabelProfile,
     FeatureInspectorReport,
     EncodingRequest, 
-    ScalingRequest
+    ScalingRequest,
+    VersionHistory, 
+    VersionInfo
 )
 from app.services.imputation_service import compare_strategies, impute_column_in_dataframe, preview_imputation
 from app.services.dataset_service import compute_overview, get_effective_type, drop_column
@@ -711,3 +715,72 @@ def get_boxplot_data(dataset_id: str, column: str) -> BoxPlotData:
         minimum=float(series.min()),
         maximum=float(series.max()),
     )
+
+@router.get("/{dataset_id}/history", response_model=VersionHistory)
+def get_dataset_history(dataset_id: str) -> VersionHistory:
+    if not dataset_store.exists(dataset_id):
+        raise HTTPException(status_code=404, detail="Dataset not found.")
+
+    history = dataset_store.get_history(dataset_id)
+    return VersionHistory(
+        dataset_id=dataset_id,
+        versions=[VersionInfo(**v) for v in history],
+    )
+
+
+@router.post("/{dataset_id}/undo", response_model=DatasetOverview)
+def undo_last_change(dataset_id: str) -> DatasetOverview:
+    if not dataset_store.exists(dataset_id):
+        raise HTTPException(status_code=404, detail="Dataset not found.")
+
+    try:
+        new_df = dataset_store.undo(dataset_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    filename = dataset_store.get_filename(dataset_id)
+    overrides = dataset_store.get_overrides(dataset_id)
+    return compute_overview(dataset_id=dataset_id, filename=filename, df=new_df, overrides=overrides)
+
+
+@router.post("/{dataset_id}/redo", response_model=DatasetOverview)
+def redo_last_change(dataset_id: str) -> DatasetOverview:
+    if not dataset_store.exists(dataset_id):
+        raise HTTPException(status_code=404, detail="Dataset not found.")
+
+    try:
+        new_df = dataset_store.redo(dataset_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    filename = dataset_store.get_filename(dataset_id)
+    overrides = dataset_store.get_overrides(dataset_id)
+    return compute_overview(dataset_id=dataset_id, filename=filename, df=new_df, overrides=overrides)
+
+
+@router.post("/{dataset_id}/restore/{version_num}", response_model=DatasetOverview)
+def restore_dataset_version(dataset_id: str, version_num: int) -> DatasetOverview:
+    if not dataset_store.exists(dataset_id):
+        raise HTTPException(status_code=404, detail="Dataset not found.")
+
+    try:
+        new_df = dataset_store.restore(dataset_id, version_num)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    filename = dataset_store.get_filename(dataset_id)
+    overrides = dataset_store.get_overrides(dataset_id)
+    return compute_overview(dataset_id=dataset_id, filename=filename, df=new_df, overrides=overrides)
+
+@router.get("", response_model=DatasetList)
+def list_all_datasets() -> DatasetList:
+    datasets = dataset_store.list_datasets()
+    return DatasetList(datasets=[DatasetSummary(**d) for d in datasets])
+
+@router.delete("/{dataset_id}")
+def delete_dataset(dataset_id: str) -> dict:
+    if not dataset_store.exists(dataset_id):
+        raise HTTPException(status_code=404, detail="Dataset not found.")
+
+    dataset_store.delete_dataset(dataset_id)
+    return {"message": f"Dataset {dataset_id} deleted."}

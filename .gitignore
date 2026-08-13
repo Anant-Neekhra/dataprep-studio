@@ -12,3 +12,5 @@ venv/
 *.parquet
 
 .DS_Store
+
+*.db

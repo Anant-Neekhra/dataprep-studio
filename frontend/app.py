@@ -20,6 +20,7 @@ def dataset_nav_links(dataset_id: str, current_page: str = ""):
         ("Categorical Analysis", "categorical"),
         ("Feature Inspector", "inspect"),
         ("Visualization Center", "visualize"),
+        ("Version History", "history"),
     ]
     with ui.row().classes("gap-4 flex-wrap justify-center max-w-2xl"):
         for label, path in links:
@@ -76,6 +77,53 @@ async def upload_page():
     with ui.column().classes("items-center w-full mt-10 gap-4"):
         ui.label("Upload Dataset").classes("text-2xl font-bold")
         ui.link("← Back to home", "/").classes("text-sm text-gray-400")
+
+        ui.label("Or continue with a previous dataset:").classes("text-sm text-gray-500 mt-2")
+        dataset_list_container = ui.column().classes("w-full max-w-2xl gap-1")
+
+        async def load_dataset_list():
+            dataset_list_container.clear()
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(f"{BACKEND_URL}/datasets")
+                if response.status_code == 200:
+                    datasets = response.json()["datasets"]
+                    with dataset_list_container:
+                        if not datasets:
+                            ui.label("No previous datasets yet.").classes(
+                                "text-xs text-gray-400"
+                            )
+                        for d in datasets:
+                            with ui.row().classes("items-center gap-2"):
+                                ui.link(
+                                    d["filename"], f"/column-types/{d['dataset_id']}"
+                                ).classes("text-sm text-blue-600")
+                                version_label = f"v{d['current_version']}/{d['total_versions']}"
+                                version_label += " (edited)" if d["total_versions"] > 1 else " (unedited)"
+                                ui.label(version_label).classes("text-xs text-gray-500")
+                                ui.label(d["created_at"][:19]).classes("text-xs text-gray-400")
+
+                                async def delete_this_dataset(dataset_id=d["dataset_id"], filename=d["filename"]):
+                                    async with httpx.AsyncClient(timeout=15.0) as client:
+                                        response = await client.delete(
+                                            f"{BACKEND_URL}/datasets/{dataset_id}"
+                                        )
+                                        if response.status_code != 200:
+                                            try:
+                                                detail = response.json().get("detail", "Unknown error")
+                                            except Exception:
+                                                detail = f"Request failed ({response.status_code})"
+                                            ui.notify(detail, type="negative")
+                                            return
+                                    ui.notify(f"Deleted '{filename}'", type="positive")
+                                    await load_dataset_list()
+
+                                ui.button(icon="delete", on_click=delete_this_dataset).props(
+                                    "flat dense round color=negative size=sm"
+                                )
+
+        ui.timer(0.1, load_dataset_list, once=True)
+
+        ui.separator().classes("my-2")
 
         overview_container = ui.column().classes("w-full max-w-2xl gap-2")
 
@@ -1514,3 +1562,90 @@ async def visualize_page(dataset_id: str):
                             ui.plotly(fig).classes("w-full")
 
                 pie_select.on("update:model-value", lambda: load_pie())
+
+@ui.page("/history/{dataset_id}")
+async def history_page(dataset_id: str):
+    with ui.column().classes("items-center w-full mt-10 gap-4"):
+        ui.label("Version History").classes("text-2xl font-bold")
+        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+            "text-sm text-gray-400"
+        )
+
+        with ui.row().classes("gap-2"):
+            undo_button = ui.button("↶ Undo")
+            redo_button = ui.button("↷ Redo")
+
+        history_container = ui.column().classes("w-full max-w-2xl gap-2")
+
+        async def load_history():
+            history_container.clear()
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(f"{BACKEND_URL}/datasets/{dataset_id}/history")
+                if response.status_code != 200:
+                    with history_container:
+                        ui.label("❌ Could not load history.").classes("text-red-600")
+                    return
+                history = response.json()
+
+            with history_container:
+                for v in reversed(history["versions"]):  # newest first
+                    with ui.card().classes(
+                        "w-full " + ("border-2 border-blue-500" if v["is_current"] else "")
+                    ):
+                        with ui.row().classes("w-full items-center justify-between"):
+                            with ui.column().classes("gap-0"):
+                                ui.label(
+                                    f"Version {v['version_num']}"
+                                    + (" (current)" if v["is_current"] else "")
+                                ).classes("font-semibold")
+                                ui.label(v["description"]).classes("text-sm text-gray-600")
+                                ui.label(v["timestamp"]).classes("text-xs text-gray-400")
+
+                            if not v["is_current"]:
+                                async def restore_version(version_num=v["version_num"]):
+                                    async with httpx.AsyncClient(timeout=15.0) as client:
+                                        response = await client.post(
+                                            f"{BACKEND_URL}/datasets/{dataset_id}/restore/{version_num}"
+                                        )
+                                        if response.status_code != 200:
+                                            try:
+                                                detail = response.json().get("detail", "Unknown error")
+                                            except Exception:
+                                                detail = f"Request failed ({response.status_code})"
+                                            ui.notify(detail, type="negative")
+                                            return
+                                    ui.notify(f"Restored to version {version_num}", type="positive")
+                                    await load_history()
+
+                                ui.button("Restore", on_click=restore_version).props("dense")
+
+        async def do_undo():
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.post(f"{BACKEND_URL}/datasets/{dataset_id}/undo")
+                if response.status_code != 200:
+                    try:
+                        detail = response.json().get("detail", "Unknown error")
+                    except Exception:
+                        detail = f"Request failed ({response.status_code})"
+                    ui.notify(detail, type="negative")
+                    return
+            ui.notify("Undone.", type="positive")
+            await load_history()
+
+        async def do_redo():
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.post(f"{BACKEND_URL}/datasets/{dataset_id}/redo")
+                if response.status_code != 200:
+                    try:
+                        detail = response.json().get("detail", "Unknown error")
+                    except Exception:
+                        detail = f"Request failed ({response.status_code})"
+                    ui.notify(detail, type="negative")
+                    return
+            ui.notify("Redone.", type="positive")
+            await load_history()
+
+        undo_button.on_click(do_undo)
+        redo_button.on_click(do_redo)
+
+        ui.timer(0.1, load_history, once=True)

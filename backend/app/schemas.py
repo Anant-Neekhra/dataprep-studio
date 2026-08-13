@@ -277,3 +277,25 @@ class BoxPlotData(BaseModel):
     q3: float
     minimum: float
     maximum: float
+
+class VersionInfo(BaseModel):
+    version_num: int
+    description: str
+    timestamp: str
+    is_current: bool
+
+
+class VersionHistory(BaseModel):
+    dataset_id: str
+    versions: list[VersionInfo]
+
+class DatasetSummary(BaseModel):
+    dataset_id: str
+    filename: str
+    created_at: str
+    current_version: int
+    total_versions: int
+
+
+class DatasetList(BaseModel):
+    datasets: list[DatasetSummary]

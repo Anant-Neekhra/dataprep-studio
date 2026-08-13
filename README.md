@@ -198,3 +198,15 @@ App at `http://localhost:8080`
 - Linked from the Column Types page
 
 **UX fix:** cross-page navigation had grown inconsistent — links to Correlation, Categorical Analysis, Feature Inspector, and Visualization Center were scattered ad-hoc across different pages as they were built, with some pages missing links others had. Added a single `dataset_nav_links()` helper rendering a consistent set of links, applied to the two main hub pages (Column Types, Recommendations) rather than every page, keeping navigation predictable without cluttering every module page with a full link list.
+
+### Day 16 — History Manager (SQLite-backed storage, undo/redo/restore)
+- **Major architectural change**: replaced the in-memory `DatasetStore` with a SQLite-backed store (`app/db.py`) — datasets now persist across backend restarts, permanently fixing the "stale dataset_id" issue hit repeatedly throughout Weeks 1-2
+- DataFrames serialized as Parquet bytes (not pickle, for stability/safety; not CSV, to preserve dtypes correctly) and stored as BLOBs
+- Three tables: `datasets` (metadata + current-version pointer), `dataset_versions` (every applied transformation as a full snapshot), `dataset_overrides` (Day 3's type overrides — deliberately kept separate from version history, since type overrides are a "lens" on the data rather than a data transformation, so undoing a transformation doesn't unexpectedly revert a column's type)
+- `DatasetStore.update()` now creates a new version instead of overwriting, and correctly implements standard undo/redo-stack semantics: applying a new change while not at the latest version discards the old "future" versions
+- New endpoints: `/history` (version list), `/undo`, `/redo`, `/restore/{version_num}`
+- SQLite connections opened per-call rather than shared, since FastAPI runs sync endpoints in a thread pool and SQLite connections aren't thread-safe to share
+- Frontend Version History page: full version list with descriptions/timestamps, current version highlighted, Undo/Redo buttons, Restore-to-any-version
+- **Dataset list on the Upload page** (added after initial testing surfaced the gap): shows every previously uploaded dataset with version count (`v2/4`) and edited/unedited status, so datasets with duplicate filenames are distinguishable
+- **Dataset deletion**: delete button per dataset in the list, cleans up all three tables (versions, overrides, metadata) to avoid orphaned rows
+- Verified end to end: applied multiple transformations, confirmed full undo/redo/restore cycle works correctly, confirmed a dataset survives a full backend restart with all history intact, confirmed deleted datasets correctly 404 on old URLs

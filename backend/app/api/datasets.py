@@ -22,6 +22,8 @@ from app.schemas import (
     DuplicateRowsPreview,
     ImputePreviewResponse,
     ImputeRequest,
+    PipelineView,
+    PipelineStep,
     Recommendation,
     RemoveDuplicateColumnsRequest,
     RemoveDuplicateRowsRequest,
@@ -252,7 +254,12 @@ def apply_column_imputation(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    dataset_store.update(dataset_id, new_df)
+    dataset_store.update(
+        dataset_id, new_df,
+        description=f"Imputed '{column}' using {body.strategy}",
+        operation="impute",
+        operation_params={"column": column, "strategy": body.strategy, "constant_value": body.constant_value},
+    )
 
     filename = dataset_store.get_filename(dataset_id)
     overrides = dataset_store.get_overrides(dataset_id)
@@ -303,7 +310,12 @@ def apply_remove_duplicate_rows(
 ) -> DatasetOverview:
     df = _get_df_or_404(dataset_id)
     new_df = remove_duplicate_rows(df, keep=body.keep)
-    dataset_store.update(dataset_id, new_df)
+    dataset_store.update(
+        dataset_id, new_df,
+        description=f"Removed duplicate rows (keep={body.keep})",
+        operation="remove_duplicate_rows",
+        operation_params={"keep": body.keep},
+    )
 
     filename = dataset_store.get_filename(dataset_id)
     overrides = dataset_store.get_overrides(dataset_id)
@@ -330,7 +342,12 @@ def apply_remove_duplicate_columns(
         raise HTTPException(status_code=400, detail=f"Column(s) not found: {missing}")
 
     new_df = remove_duplicate_columns(df, body.columns_to_drop)
-    dataset_store.update(dataset_id, new_df)
+    dataset_store.update(
+        dataset_id, new_df,
+        description=f"Removed duplicate columns: {body.columns_to_drop}",
+        operation="remove_duplicate_columns",
+        operation_params={"columns_to_drop": body.columns_to_drop},
+    )
 
     filename = dataset_store.get_filename(dataset_id)
     overrides = dataset_store.get_overrides(dataset_id)
@@ -365,7 +382,12 @@ def apply_dtype_conversion(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    dataset_store.update(dataset_id, new_df)
+    dataset_store.update(
+        dataset_id, new_df,
+        description=f"Converted '{column}' to {body.target_type}",
+        operation="convert_dtype",
+        operation_params={"column": column, "target_type": body.target_type},
+    )
 
     filename = dataset_store.get_filename(dataset_id)
     overrides = dataset_store.get_overrides(dataset_id)
@@ -443,7 +465,12 @@ def apply_column_transform(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    dataset_store.update(dataset_id, new_df)
+    dataset_store.update(
+        dataset_id, new_df,
+        description=f"Applied {body.transform} transform to '{column}'",
+        operation="transform",
+        operation_params={"column": column, "transform": body.transform},
+    )
 
     filename = dataset_store.get_filename(dataset_id)
     overrides = dataset_store.get_overrides(dataset_id)
@@ -456,7 +483,12 @@ def delete_column(dataset_id: str, column: str) -> DatasetOverview:
         raise HTTPException(status_code=404, detail=f"Column '{column}' not found.")
 
     new_df = drop_column(df, column)
-    dataset_store.update(dataset_id, new_df)
+    dataset_store.update(
+        dataset_id, new_df,
+        description=f"Dropped column '{column}'",
+        operation="drop_column",
+        operation_params={"column": column},
+    )
 
     # Column overrides for a dropped column are stale — clean up so they
     # don't linger and cause confusion if a future column happens to
@@ -498,7 +530,12 @@ def apply_outlier_treatment(
     else:
         new_df = cap_outliers(df, column, body.method)
 
-    dataset_store.update(dataset_id, new_df)
+    dataset_store.update(
+        dataset_id, new_df,
+        description=f"{body.action.capitalize()}ped outliers in '{column}' using {body.method}",
+        operation="outlier_treatment",
+        operation_params={"column": column, "method": body.method, "action": body.action},
+    )
 
     filename = dataset_store.get_filename(dataset_id)
     overrides = dataset_store.get_overrides(dataset_id)
@@ -651,7 +688,12 @@ def apply_encoding(dataset_id: str, column: str, body: EncodingRequest) -> Datas
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    dataset_store.update(dataset_id, new_df)
+    dataset_store.update(
+        dataset_id, new_df,
+        description=f"Encoded '{column}' using {body.method}",
+        operation="encode",
+        operation_params={"column": column, "method": body.method, "order": body.order, "delimiter": body.delimiter},
+    )
 
     filename = dataset_store.get_filename(dataset_id)
     overrides = dataset_store.get_overrides(dataset_id)
@@ -669,7 +711,12 @@ def apply_column_scaling(dataset_id: str, column: str, body: ScalingRequest) -> 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    dataset_store.update(dataset_id, new_df)
+    dataset_store.update(
+        dataset_id, new_df,
+        description=f"Scaled '{column}' using {body.method}",
+        operation="scale",
+        operation_params={"column": column, "method": body.method},
+    )
 
     filename = dataset_store.get_filename(dataset_id)
     overrides = dataset_store.get_overrides(dataset_id)
@@ -784,3 +831,23 @@ def delete_dataset(dataset_id: str) -> dict:
 
     dataset_store.delete_dataset(dataset_id)
     return {"message": f"Dataset {dataset_id} deleted."}
+
+@router.get("/{dataset_id}/pipeline", response_model=PipelineView)
+def get_pipeline(dataset_id: str) -> PipelineView:
+    if not dataset_store.exists(dataset_id):
+        raise HTTPException(status_code=404, detail="Dataset not found.")
+
+    history = dataset_store.get_history(dataset_id)
+    # Skip version 1 (the initial upload) — the pipeline shows applied
+    # TRANSFORMATIONS, not the starting point.
+    steps = [
+        PipelineStep(
+            version_num=h["version_num"],
+            operation=h["operation"],
+            operation_params=h["operation_params"],
+            description=h["description"],
+        )
+        for h in history
+        if h["version_num"] > 1
+    ]
+    return PipelineView(dataset_id=dataset_id, steps=steps)

@@ -39,6 +39,8 @@ def init_db() -> None:
                 dataset_id TEXT NOT NULL,
                 version_num INTEGER NOT NULL,
                 description TEXT NOT NULL,
+                operation TEXT,
+                operation_params TEXT,
                 timestamp TEXT NOT NULL,
                 data BLOB NOT NULL,
                 FOREIGN KEY (dataset_id) REFERENCES datasets (dataset_id)

@@ -281,6 +281,8 @@ class BoxPlotData(BaseModel):
 class VersionInfo(BaseModel):
     version_num: int
     description: str
+    operation: str | None = None
+    operation_params: dict | None = None
     timestamp: str
     is_current: bool
 
@@ -299,3 +301,14 @@ class DatasetSummary(BaseModel):
 
 class DatasetList(BaseModel):
     datasets: list[DatasetSummary]
+
+class PipelineStep(BaseModel):
+    version_num: int
+    operation: str | None
+    operation_params: dict | None
+    description: str
+
+
+class PipelineView(BaseModel):
+    dataset_id: str
+    steps: list[PipelineStep]

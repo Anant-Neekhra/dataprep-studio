@@ -210,3 +210,12 @@ App at `http://localhost:8080`
 - **Dataset list on the Upload page** (added after initial testing surfaced the gap): shows every previously uploaded dataset with version count (`v2/4`) and edited/unedited status, so datasets with duplicate filenames are distinguishable
 - **Dataset deletion**: delete button per dataset in the list, cleans up all three tables (versions, overrides, metadata) to avoid orphaned rows
 - Verified end to end: applied multiple transformations, confirmed full undo/redo/restore cycle works correctly, confirmed a dataset survives a full backend restart with all history intact, confirmed deleted datasets correctly 404 on old URLs
+
+### Day 17 — Pipeline Builder (structured step tracking + ordered view)
+- Extended `dataset_versions` table with `operation` (e.g. "impute", "drop_column") and `operation_params` (JSON-serialized parameters) — machine-readable step data alongside the existing human-readable `description`, needed for both today's pipeline view and Day 18's planned Python script export
+- Updated `DatasetStore.update()` and `get_history()` to store/retrieve the new structured fields
+- Wired structured operation data into all 9 apply-endpoints (impute, remove duplicate rows/columns, convert dtype, transform, outlier treatment, encode, scale, drop column) — each now records exactly what operation ran and with what parameters, not just a text description
+- `GET /{id}/pipeline` — returns applied transformations in order (excludes the initial upload, version 1, since the pipeline shows what changed, not the starting point)
+- Frontend Pipeline page: numbered, ordered list of every transformation applied to the dataset
+- **Scope decision**: true drag-and-reorder-with-replay was deliberately deferred to Day 18, since it requires a "replay engine" (re-execute a list of operations against fresh data) that Day 18's Python script export needs identically — building it once, at the point where both features can share it, rather than duplicating the logic across two days
+- Verified end to end: applied several different transformation types, confirmed `/history` correctly returns structured operation/params for each, confirmed the Pipeline page renders them in correct order

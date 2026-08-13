@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from app.db import bytes_to_dataframe, dataframe_to_bytes, get_connection
 import pandas as pd
+import json
 
 
 class DatasetStore:
@@ -66,15 +67,14 @@ class DatasetStore:
     def exists(self, dataset_id: str) -> bool:
         return self.get_filename(dataset_id) is not None
 
-    def update(self, dataset_id: str, df: pd.DataFrame, description: str = "Transformation applied") -> None:
-        """
-        Creates a NEW version rather than overwriting. If the current
-        version isn't the latest one (i.e. the user has undone some
-        steps and is now applying something new), every version AFTER
-        the current one is deleted first — this is standard undo/redo
-        behavior: making a new change from a "rewound" state discards
-        the redo history, since it no longer makes sense.
-        """
+    def update(
+        self,
+        dataset_id: str,
+        df: pd.DataFrame,
+        description: str = "Transformation applied",
+        operation: str | None = None,
+        operation_params: dict | None = None,
+    ) -> None:
         conn = get_connection()
         try:
             row = conn.execute(
@@ -92,10 +92,13 @@ class DatasetStore:
 
             new_version = current_version + 1
             now = datetime.now(timezone.utc).isoformat()
+            params_json = json.dumps(operation_params) if operation_params else None
 
             conn.execute(
-                "INSERT INTO dataset_versions (dataset_id, version_num, description, timestamp, data) VALUES (?, ?, ?, ?, ?)",
-                (dataset_id, new_version, description, now, dataframe_to_bytes(df)),
+                "INSERT INTO dataset_versions "
+                "(dataset_id, version_num, description, operation, operation_params, timestamp, data) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (dataset_id, new_version, description, operation, params_json, now, dataframe_to_bytes(df)),
             )
             conn.execute(
                 "UPDATE datasets SET current_version = ? WHERE dataset_id = ?",
@@ -104,30 +107,6 @@ class DatasetStore:
             conn.commit()
         finally:
             conn.close()
-
-    def undo(self, dataset_id: str) -> pd.DataFrame:
-        conn = get_connection()
-        try:
-            row = conn.execute(
-                "SELECT current_version FROM datasets WHERE dataset_id = ?", (dataset_id,)
-            ).fetchone()
-            if row is None:
-                raise KeyError(f"Dataset {dataset_id} not found")
-
-            current_version = row["current_version"]
-            if current_version <= 1:
-                raise ValueError("Already at the earliest version — nothing to undo.")
-
-            new_version = current_version - 1
-            conn.execute(
-                "UPDATE datasets SET current_version = ? WHERE dataset_id = ?",
-                (new_version, dataset_id),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-        return self.get(dataset_id)
 
     def redo(self, dataset_id: str) -> pd.DataFrame:
         conn = get_connection()
@@ -188,8 +167,8 @@ class DatasetStore:
             current_version = current_row["current_version"] if current_row else None
 
             rows = conn.execute(
-                "SELECT version_num, description, timestamp FROM dataset_versions "
-                "WHERE dataset_id = ? ORDER BY version_num ASC",
+                "SELECT version_num, description, operation, operation_params, timestamp "
+                "FROM dataset_versions WHERE dataset_id = ? ORDER BY version_num ASC",
                 (dataset_id,),
             ).fetchall()
 
@@ -197,6 +176,8 @@ class DatasetStore:
                 {
                     "version_num": r["version_num"],
                     "description": r["description"],
+                    "operation": r["operation"],
+                    "operation_params": json.loads(r["operation_params"]) if r["operation_params"] else None,
                     "timestamp": r["timestamp"],
                     "is_current": r["version_num"] == current_version,
                 }

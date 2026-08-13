@@ -21,6 +21,7 @@ def dataset_nav_links(dataset_id: str, current_page: str = ""):
         ("Feature Inspector", "inspect"),
         ("Visualization Center", "visualize"),
         ("Version History", "history"),
+        ("Pipeline View", "pipeline"),
     ]
     with ui.row().classes("gap-4 flex-wrap justify-center max-w-2xl"):
         for label, path in links:
@@ -1649,3 +1650,50 @@ async def history_page(dataset_id: str):
         redo_button.on_click(do_redo)
 
         ui.timer(0.1, load_history, once=True)
+
+@ui.page("/pipeline/{dataset_id}")
+async def pipeline_page(dataset_id: str):
+    with ui.column().classes("items-center w-full mt-10 gap-4"):
+        ui.label("Pipeline").classes("text-2xl font-bold")
+        ui.label(
+            "Every transformation applied to this dataset, in order. "
+            "This is exactly what Day 18's export will turn into a Python script."
+        ).classes("text-sm text-gray-400 text-center max-w-xl")
+        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+            "text-sm text-gray-400"
+        )
+
+        pipeline_container = ui.column().classes("w-full max-w-2xl gap-2")
+
+        async def load_pipeline():
+            pipeline_container.clear()
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(f"{BACKEND_URL}/datasets/{dataset_id}/pipeline")
+                if response.status_code != 200:
+                    with pipeline_container:
+                        ui.label("❌ Could not load pipeline.").classes("text-red-600")
+                    return
+                pipeline = response.json()
+
+            with pipeline_container:
+                if not pipeline["steps"]:
+                    ui.label(
+                        "No transformations applied yet. Apply something from "
+                        "Recommendations to see it appear here."
+                    ).classes("text-sm text-gray-500")
+                    return
+
+                for i, step in enumerate(pipeline["steps"], start=1):
+                    with ui.card().classes("w-full"):
+                        with ui.row().classes("items-center gap-3"):
+                            ui.label(f"{i}").classes(
+                                "text-lg font-bold text-blue-600 w-6"
+                            )
+                            with ui.column().classes("gap-0"):
+                                ui.label(step["description"]).classes("font-semibold")
+                                if step["operation"]:
+                                    ui.label(f"operation: {step['operation']}").classes(
+                                        "text-xs text-gray-400"
+                                    )
+
+        ui.timer(0.1, load_pipeline, once=True)

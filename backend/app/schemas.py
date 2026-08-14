@@ -329,3 +329,25 @@ class ReplayCheckResult(BaseModel):
     matches_current: bool
     current_shape: list[int]
     replayed_shape: list[int]
+
+class HealthScoreBreakdownItem(BaseModel):
+    factor: str
+    penalty: float
+    detail: str
+
+
+class HealthScore(BaseModel):
+    score: float
+    breakdown: list[HealthScoreBreakdownItem]
+    total_recommendations: int
+    high_severity_count: int
+
+
+class DashboardData(BaseModel):
+    dataset_id: str
+    filename: str
+    overview: DatasetOverview
+    health: HealthScore
+    recent_changes: list[VersionInfo]
+    pipeline_step_count: int
+    quick_recommendations: list[Recommendation]

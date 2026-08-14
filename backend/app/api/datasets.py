@@ -51,6 +51,9 @@ from app.schemas import (
     VersionInfo,
     ReorderPipelineRequest, 
     ReplayCheckResult,
+    DashboardData, 
+    HealthScore, 
+    HealthScoreBreakdownItem,
 )
 from app.services.imputation_service import compare_strategies, impute_column_in_dataframe, preview_imputation
 from app.services.dataset_service import compute_overview, get_effective_type, drop_column
@@ -99,6 +102,7 @@ from app.services.export_service import (
     export_pipeline_to_yaml,
     generate_pipeline_script,
 )
+from app.services.health_service import compute_health_score
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -991,4 +995,42 @@ def export_pipeline_script(dataset_id: str):
         content=content,
         media_type="text/x-python",
         headers={"Content-Disposition": 'attachment; filename="preprocessing_pipeline.py"'},
+    )
+
+@router.get("/{dataset_id}/dashboard", response_model=DashboardData)
+def get_dashboard(dataset_id: str) -> DashboardData:
+    df = _get_df_or_404(dataset_id)
+    filename = dataset_store.get_filename(dataset_id)
+    overrides = dataset_store.get_overrides(dataset_id)
+
+    overview = compute_overview(dataset_id=dataset_id, filename=filename, df=df, overrides=overrides)
+    health_result = compute_health_score(df, overrides)
+
+    history = dataset_store.get_history(dataset_id)
+    recent_changes = [VersionInfo(**h) for h in history[-5:]]  # last 5, most recent last
+    pipeline_step_count = len([h for h in history if h["version_num"] > 1])
+
+    all_recommendations = []
+    for col in df.columns:
+        _, effective_type, _ = get_effective_type(df[col], col, overrides)
+        profile = profile_column(df[col], col, effective_type)
+        facts = build_facts(profile, series=df[col])
+        all_recommendations.extend(evaluate_rules(col, effective_type, facts))
+    all_recommendations.extend(evaluate_dataset_rules(build_dataset_facts(df)))
+
+    # "Quick" recommendations — just the highest-severity few, for a
+    # dashboard glance rather than the full list (that's what the
+    # dedicated Recommendations page is for).
+    severity_order = {"high": 0, "medium": 1, "low": 2}
+    all_recommendations.sort(key=lambda r: severity_order[r.severity])
+    quick_recommendations = all_recommendations[:5]
+
+    return DashboardData(
+        dataset_id=dataset_id,
+        filename=filename,
+        overview=overview,
+        health=HealthScore(**health_result),
+        recent_changes=recent_changes,
+        pipeline_step_count=pipeline_step_count,
+        quick_recommendations=quick_recommendations,
     )

@@ -24,14 +24,20 @@ def dataset_nav_links(dataset_id: str, current_page: str = ""):
         ("Version History", "history"),
         ("Pipeline View", "pipeline"),
         ("Export", "export"),
+        ("Dashboard", "dashboard"),
     ]
     with ui.row().classes("gap-4 flex-wrap justify-center max-w-2xl"):
         for label, path in links:
             if path == current_page:
                 continue
-            ui.link(f"{label} →", f"/{path}/{dataset_id}").classes(
-                "text-sm text-blue-600"
-            )
+            if path == "recommendations":
+                ui.link(f"⚡ {label} →", f"/{path}/{dataset_id}").classes(
+                    "text-sm font-semibold text-orange-600"
+                )
+            else:
+                ui.link(f"{label} →", f"/{path}/{dataset_id}").classes(
+                    "text-sm text-blue-600"
+                )
 
 def learning_mode_toggle():
     """
@@ -116,7 +122,7 @@ async def upload_page():
                         for d in datasets:
                             with ui.row().classes("items-center gap-2"):
                                 ui.link(
-                                    d["filename"], f"/column-types/{d['dataset_id']}"
+                                    d["filename"], f"/dashboard/{d['dataset_id']}"
                                 ).classes("text-sm text-blue-600")
                                 version_label = f"v{d['current_version']}/{d['total_versions']}"
                                 version_label += " (edited)" if d["total_versions"] > 1 else " (unedited)"
@@ -220,8 +226,11 @@ async def upload_page():
                         )
 
                     ui.link(
-                        "Review & Override Column Types →", f"/column-types/{dataset_id}"
-                    ).classes("mt-2")
+                        "Go to Dashboard →", f"/dashboard/{dataset_id}"
+                    ).classes("mt-2 font-semibold")
+                    ui.link(
+                        "Or review column types first →", f"/column-types/{dataset_id}"
+                    ).classes("text-sm text-gray-500")
 
             except httpx.HTTPStatusError as ex:
                 overview_container.clear()
@@ -486,7 +495,7 @@ IMPUTE_STRATEGIES = ["mean", "median", "mode", "constant", "forward_fill", "back
 async def missing_values_page(dataset_id: str):
     with ui.column().classes("items-center w-full mt-10 gap-4"):
         ui.label("Missing Value Engine").classes("text-2xl font-bold")
-        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+        ui.link("← Back to dashboard", f"/dashboard/{dataset_id}").classes(
             "text-sm text-gray-400"
         )
 
@@ -619,7 +628,7 @@ ui.run(title="DataPrep Studio", host="0.0.0.0", port=8080, reload=True, storage_
 async def duplicates_page(dataset_id: str):
     with ui.column().classes("items-center w-full mt-10 gap-4"):
         ui.label("Duplicate Analysis").classes("text-2xl font-bold")
-        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+        ui.link("← Back to dashboard", f"/dashboard/{dataset_id}").classes(
             "text-sm text-gray-400"
         )
 
@@ -733,7 +742,7 @@ DTYPE_OPTIONS = ["datetime", "integer", "category", "float", "string"]
 async def datatypes_page(dataset_id: str):
     with ui.column().classes("items-center w-full mt-10 gap-4"):
         ui.label("Datatype Analyzer").classes("text-2xl font-bold")
-        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+        ui.link("← Back to dashboard", f"/dashboard/{dataset_id}").classes(
             "text-sm text-gray-400"
         )
 
@@ -823,7 +832,7 @@ def make_histogram_figure(bin_edges: list, counts: list, title: str) -> go.Figur
 async def distribution_page(dataset_id: str):
     with ui.column().classes("items-center w-full mt-10 gap-4"):
         ui.label("Distribution Analysis").classes("text-2xl font-bold")
-        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+        ui.link("← Back to dashboard", f"/dashboard/{dataset_id}").classes(
             "text-sm text-gray-400"
         )
 
@@ -954,7 +963,7 @@ OUTLIER_METHODS_LIST = ["iqr", "zscore", "modified_zscore"]
 async def outliers_page(dataset_id: str):
     with ui.column().classes("items-center w-full mt-10 gap-4"):
         ui.label("Outlier Analysis").classes("text-2xl font-bold")
-        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+        ui.link("← Back to dashboard", f"/dashboard/{dataset_id}").classes(
             "text-sm text-gray-400"
         )
 
@@ -1049,7 +1058,7 @@ CORRELATION_METHODS = ["pearson", "spearman", "kendall"]
 async def correlation_page(dataset_id: str):
     with ui.column().classes("items-center w-full mt-10 gap-4"):
         ui.label("Correlation Analysis").classes("text-2xl font-bold")
-        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+        ui.link("← Back to dashboard", f"/dashboard/{dataset_id}").classes(
             "text-sm text-gray-400"
         )
 
@@ -1149,7 +1158,7 @@ async def correlation_page(dataset_id: str):
 async def categorical_page(dataset_id: str):
     with ui.column().classes("items-center w-full mt-10 gap-4"):
         ui.label("Categorical Analysis").classes("text-2xl font-bold")
-        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+        ui.link("← Back to dashboard", f"/dashboard/{dataset_id}").classes(
             "text-sm text-gray-400"
         )
 
@@ -1252,7 +1261,7 @@ async def categorical_page(dataset_id: str):
 async def inspect_page(dataset_id: str):
     with ui.column().classes("items-center w-full mt-10 gap-4"):
         ui.label("Feature Inspector").classes("text-2xl font-bold")
-        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+        ui.link("← Back to dashboard", f"/dashboard/{dataset_id}").classes(
             "text-sm text-gray-400"
         )
 
@@ -1373,7 +1382,7 @@ SCALING_METHODS_LIST = ["standard", "minmax", "robust", "maxabs", "normalize"]
 async def encoding_page(dataset_id: str):
     with ui.column().classes("items-center w-full mt-10 gap-4"):
         ui.label("Encoding Advisor").classes("text-2xl font-bold")
-        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+        ui.link("← Back to dashboard", f"/dashboard/{dataset_id}").classes(
             "text-sm text-gray-400"
         )
 
@@ -1428,7 +1437,7 @@ async def encoding_page(dataset_id: str):
 async def scaling_page(dataset_id: str):
     with ui.column().classes("items-center w-full mt-10 gap-4"):
         ui.label("Scaling Advisor").classes("text-2xl font-bold")
-        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+        ui.link("← Back to dashboard", f"/dashboard/{dataset_id}").classes(
             "text-sm text-gray-400"
         )
 
@@ -1471,7 +1480,7 @@ async def scaling_page(dataset_id: str):
 async def visualize_page(dataset_id: str):
     with ui.column().classes("items-center w-full mt-10 gap-4"):
         ui.label("Visualization Center").classes("text-2xl font-bold")
-        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+        ui.link("← Back to dashboard", f"/dashboard/{dataset_id}").classes(
             "text-sm text-gray-400"
         )
 
@@ -1621,7 +1630,7 @@ async def visualize_page(dataset_id: str):
 async def history_page(dataset_id: str):
     with ui.column().classes("items-center w-full mt-10 gap-4"):
         ui.label("Version History").classes("text-2xl font-bold")
-        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+        ui.link("← Back to dashboard", f"/dashboard/{dataset_id}").classes(
             "text-sm text-gray-400"
         )
 
@@ -1712,7 +1721,7 @@ async def pipeline_page(dataset_id: str):
             "Every transformation applied to this dataset, in order. "
             "Use the arrows to reorder — this re-runs every step from the original data."
         ).classes("text-sm text-gray-400 text-center max-w-xl")
-        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+        ui.link("← Back to dashboard", f"/dashboard/{dataset_id}").classes(
             "text-sm text-gray-400"
         )
 
@@ -1809,7 +1818,7 @@ async def pipeline_page(dataset_id: str):
 async def export_page(dataset_id: str):
     with ui.column().classes("items-center w-full mt-10 gap-4"):
         ui.label("Export").classes("text-2xl font-bold")
-        ui.link("← Back to recommendations", f"/recommendations/{dataset_id}").classes(
+        ui.link("← Back to dashboard", f"/dashboard/{dataset_id}").classes(
             "text-sm text-gray-400"
         )
 
@@ -1864,3 +1873,94 @@ async def export_page(dataset_id: str):
                         f"{BACKEND_URL}/datasets/{dataset_id}/export/pipeline-script", new_tab=True
                     ),
                 ).props("color=positive")
+
+def health_score_color(score: float) -> str:
+    if score >= 80:
+        return "text-green-600"
+    if score >= 50:
+        return "text-orange-500"
+    return "text-red-600"
+
+
+@ui.page("/dashboard/{dataset_id}")
+async def dashboard_page(dataset_id: str):
+    with ui.column().classes("items-center w-full mt-10 gap-4"):
+        ui.label("Dashboard").classes("text-2xl font-bold")
+        learning_mode_toggle()
+        dataset_nav_links(dataset_id, current_page="dashboard")
+
+        content_container = ui.column().classes("w-full max-w-3xl gap-3")
+
+        async def load_dashboard():
+            content_container.clear()
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(f"{BACKEND_URL}/datasets/{dataset_id}/dashboard")
+                if response.status_code != 200:
+                    with content_container:
+                        ui.label("❌ Could not load dashboard.").classes("text-red-600")
+                    return
+                d = response.json()
+
+            with content_container:
+                with ui.card().classes("w-full items-center"):
+                    ui.label(d["filename"]).classes("text-lg font-semibold")
+                    score = d["health"]["score"]
+                    ui.label(f"{score}").classes(
+                        f"text-5xl font-bold {health_score_color(score)}"
+                    )
+                    ui.label("Dataset Health Score").classes("text-sm text-gray-400")
+
+                    if d["health"]["breakdown"]:
+                        with ui.column().classes("mt-3 gap-1"):
+                            for item in d["health"]["breakdown"]:
+                                ui.label(
+                                    f"−{item['penalty']} — {item['factor']}: {item['detail']}"
+                                ).classes("text-xs text-gray-500")
+                    else:
+                        ui.label("No issues detected — perfect score!").classes(
+                            "text-xs text-green-600 mt-2"
+                        )
+
+                ov = d["overview"]
+                with ui.card().classes("w-full"):
+                    ui.label("Dataset Overview").classes("font-semibold")
+                    with ui.row().classes("gap-8 mt-2"):
+                        with ui.column():
+                            ui.label("Rows").classes("text-xs text-gray-400")
+                            ui.label(str(ov["rows"])).classes("text-lg font-bold")
+                        with ui.column():
+                            ui.label("Columns").classes("text-xs text-gray-400")
+                            ui.label(str(ov["columns"])).classes("text-lg font-bold")
+                        with ui.column():
+                            ui.label("Missing %").classes("text-xs text-gray-400")
+                            ui.label(f"{ov['missing_percentage']}%").classes("text-lg font-bold")
+                        with ui.column():
+                            ui.label("Pipeline Steps").classes("text-xs text-gray-400")
+                            ui.label(str(d["pipeline_step_count"])).classes("text-lg font-bold")
+
+                if d["quick_recommendations"]:
+                    with ui.card().classes("w-full"):
+                        ui.label(
+                            f"Top Recommendations ({d['health']['total_recommendations']} total, "
+                            f"{d['health']['high_severity_count']} high severity)"
+                        ).classes("font-semibold")
+                        for rec in d["quick_recommendations"]:
+                            ui.label(
+                                f"[{rec['severity'].upper()}] {rec['column']} — {rec['recommendation']}"
+                            ).classes("text-sm text-gray-600")
+                        ui.link(
+                            "See all recommendations →", f"/recommendations/{dataset_id}"
+                        ).classes("text-sm text-blue-600 mt-2")
+
+                if d["recent_changes"]:
+                    with ui.card().classes("w-full"):
+                        ui.label("Recent Changes").classes("font-semibold")
+                        for change in reversed(d["recent_changes"]):
+                            ui.label(f"v{change['version_num']}: {change['description']}").classes(
+                                "text-sm text-gray-600"
+                            )
+                        ui.link("Full history →", f"/history/{dataset_id}").classes(
+                            "text-sm text-blue-600 mt-2"
+                        )
+
+        ui.timer(0.1, load_dashboard, once=True)

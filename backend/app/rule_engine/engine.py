@@ -3,7 +3,7 @@ from pathlib import Path
 import yaml
 from simpleeval import simple_eval
 
-from app.schemas import Recommendation
+from app.schemas import Recommendation, LearningContent
 
 KNOWLEDGE_BASE_DIR = Path(__file__).parent.parent / "knowledge_base"
 
@@ -71,6 +71,7 @@ def evaluate_rules(column: str, effective_type: str, facts: dict) -> list[Recomm
                     disadvantages=rule.get("disadvantages", []),
                     alternatives=rule.get("alternatives", []),
                     docs_url=rule.get("docs_url"),
+                    learning_content=LearningContent(**rule["learning_content"]) if rule.get("learning_content") else None,
                 )
             )
 
@@ -108,6 +109,7 @@ def evaluate_dataset_rules(facts: dict) -> list[Recommendation]:
                     disadvantages=rule.get("disadvantages", []),
                     alternatives=rule.get("alternatives", []),
                     docs_url=rule.get("docs_url"),
+                    learning_content=LearningContent(**rule["learning_content"]) if rule.get("learning_content") else None,
                 )
             )
 

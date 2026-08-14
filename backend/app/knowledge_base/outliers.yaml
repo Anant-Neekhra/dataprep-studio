@@ -15,6 +15,14 @@
     - "Modified Z-score (robust alternative to Z-score)"
     - "Cap instead of remove, to preserve row count"
   docs_url: "https://en.wikipedia.org/wiki/Interquartile_range"
+  learning_content:
+    concept: "Outlier detection via the Interquartile Range (IQR)"
+    why_it_matters: "Outliers can disproportionately influence means, standard deviations, and model coefficients. Detecting them is the first step before deciding whether to investigate, treat, or knowingly keep them."
+    math_explanation: "IQR = Q3 - Q1 (the range between the 75th and 25th percentile). A value is flagged as an outlier if it falls below Q1 - 1.5×IQR or above Q3 + 1.5×IQR. The 1.5 multiplier is a widely-used convention (from John Tukey's original boxplot definition), not a hard mathematical law — some fields use 3.0 for a stricter 'extreme outlier' threshold."
+    common_mistakes:
+      - "Automatically removing every flagged outlier without checking if they represent genuine, important events (e.g. fraud, rare disease cases)"
+      - "Using IQR on a strongly skewed distribution without realizing skew itself can cause many 'false positive' outlier flags"
+    real_world_example: "In credit card transaction data, unusually large purchases might be flagged as outliers by IQR — but some of those are legitimate high-value purchases, not errors, while others might be exactly the fraud you're trying to detect. Context matters more than the statistic alone."
 
 - id: significant_outliers
   category: outliers
@@ -32,3 +40,11 @@
     - "Modified Z-score (robust to the outliers' own influence on the statistics)"
     - "Cap (winsorize) instead of removing, if row count matters for other columns"
   docs_url: "https://en.wikipedia.org/wiki/Interquartile_range"
+  learning_content:
+    concept: "Outlier treatment at scale — when outliers are frequent, not rare"
+    why_it_matters: "At over 5% of a column's values, outliers stop being rare edge cases and start being a structural feature of your data. Blindly removing them can delete a meaningful fraction of your dataset; blindly keeping them can badly distort means, standard deviations, and any model sensitive to extreme values."
+    math_explanation: "Same IQR-based detection as the moderate case (values beyond Q1 - 1.5×IQR or Q3 + 1.5×IQR), but at this frequency it's worth checking whether the distribution is genuinely bimodal or heavily skewed — IQR can over-flag skewed-but-legitimate data as 'outliers' when nothing is actually wrong."
+    common_mistakes:
+      - "Treating a high outlier percentage as automatically meaning 'bad data' without checking whether the underlying distribution is just skewed"
+      - "Removing 5%+ of rows without checking what's systematically different about them (are they all from one region, one time period, one category?)"
+    real_world_example: "In e-commerce order data, if 8% of order values are flagged as outliers, that might not be noise — it could be a distinct 'bulk buyer' customer segment worth analyzing separately rather than removing."

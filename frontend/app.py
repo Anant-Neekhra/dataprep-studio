@@ -3,6 +3,7 @@ import os
 import httpx
 from nicegui import ui
 import plotly.graph_objects as go
+from nicegui import app as nicegui_app
 
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
 
@@ -31,6 +32,24 @@ def dataset_nav_links(dataset_id: str, current_page: str = ""):
             ui.link(f"{label} →", f"/{path}/{dataset_id}").classes(
                 "text-sm text-blue-600"
             )
+
+def learning_mode_toggle():
+    """
+    Renders a Learning Mode switch that persists across page navigation
+    within the same browser session, via NiceGUI's per-user storage
+    (distinct from your backend's dataset storage — this is purely a
+    frontend UI preference, never sent to the API).
+    """
+    is_on = nicegui_app.storage.user.get("learning_mode", False)
+
+    def on_toggle(e):
+        nicegui_app.storage.user["learning_mode"] = e.value
+
+    ui.switch("Learning Mode", value=is_on, on_change=on_toggle).classes("text-sm")
+
+
+def is_learning_mode() -> bool:
+    return nicegui_app.storage.user.get("learning_mode", False)
 
 @ui.page("/")
 async def main_page():
@@ -324,6 +343,7 @@ async def recommendations_page(dataset_id: str):
         ).classes("text-sm text-gray-400 text-center max-w-xl")
         ui.link("← Back to upload", "/upload").classes("text-sm text-gray-400")
         dataset_nav_links(dataset_id, current_page="recommendations")
+        learning_mode_toggle()
 
         cards_container = ui.column().classes("w-full max-w-3xl gap-3")
 
@@ -385,6 +405,38 @@ async def recommendations_page(dataset_id: str):
                                 ui.link("📄 Official Documentation", rec["docs_url"]).classes(
                                     "text-sm mt-2 text-blue-600"
                                 )
+
+                            if is_learning_mode() and rec.get("learning_content"):
+                                lc = rec["learning_content"]
+                                ui.separator().classes("my-2")
+                                ui.label("📚 Learn More").classes(
+                                    "font-semibold text-sm text-purple-700"
+                                )
+                                ui.label(lc["concept"]).classes("text-sm font-medium mt-1")
+                                ui.label(lc["why_it_matters"]).classes("text-sm text-gray-600 mt-1")
+
+                                if lc.get("math_explanation"):
+                                    ui.label("The Math").classes(
+                                        "text-xs font-semibold text-gray-500 mt-2"
+                                    )
+                                    ui.label(lc["math_explanation"]).classes(
+                                        "text-sm text-gray-600"
+                                    )
+
+                                if lc.get("common_mistakes"):
+                                    ui.label("Common Mistakes").classes(
+                                        "text-xs font-semibold text-gray-500 mt-2"
+                                    )
+                                    for mistake in lc["common_mistakes"]:
+                                        ui.label(f"⚠ {mistake}").classes("text-sm text-gray-600")
+
+                                if lc.get("real_world_example"):
+                                    ui.label("Real-World Example").classes(
+                                        "text-xs font-semibold text-gray-500 mt-2"
+                                    )
+                                    ui.label(lc["real_world_example"]).classes(
+                                        "text-sm text-gray-600"
+                                    )
 
                         if rec["category"] == "missing_values":
                             ui.link(
@@ -561,7 +613,7 @@ async def missing_values_page(dataset_id: str):
 
         ui.button("Compare", on_click=do_compare)
 
-ui.run(title="DataPrep Studio", host="0.0.0.0", port=8080, reload=True)
+ui.run(title="DataPrep Studio", host="0.0.0.0", port=8080, reload=True, storage_secret="dev-secret-change-in-production")
 
 @ui.page("/duplicates/{dataset_id}")
 async def duplicates_page(dataset_id: str):

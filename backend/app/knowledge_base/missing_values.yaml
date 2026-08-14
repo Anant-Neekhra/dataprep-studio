@@ -158,3 +158,31 @@
   alternatives:
     - "Treat missing as its own category instead of dropping"
   docs_url: "https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.drop.html"
+
+- id: missing_moderate_numerical
+  category: missing_values
+  severity: medium
+  applies_to: numerical
+  condition: "missing_pct > 5 and missing_pct <= 30"
+  recommendation: "Impute using Median"
+  reason: "Between 5-30% missing is enough to hurt analysis if dropped, but not so much that imputation becomes unreliable."
+  advantages:
+    - "Preserves all rows, no data loss"
+    - "Robust to outliers, unlike mean"
+  disadvantages:
+    - "Reduces variance in the column"
+    - "Can distort relationships with other variables if missingness isn't random"
+  alternatives:
+    - "Mean Imputation"
+    - "KNN Imputer"
+    - "Drop Rows"
+  docs_url: "https://scikit-learn.org/stable/modules/generated/sklearn.impute.SimpleImputer.html"
+  learning_content:
+    concept: "Imputation — filling in missing values with a plausible estimate"
+    why_it_matters: "Most statistical methods and ML models can't handle missing values directly. Simply deleting incomplete rows throws away potentially valuable data from every OTHER column in that row too — imputation is usually the more data-efficient choice."
+    math_explanation: "Median imputation replaces every missing value with the middle value of the sorted non-missing data: for a sorted column of N values, the median is the value at position (N+1)/2 (or the average of the two middle values if N is even). Unlike the mean, the median isn't pulled toward extreme values, because it only cares about position, not magnitude."
+    common_mistakes:
+      - "Imputing BEFORE splitting data into train/test sets, which leaks information from the test set into training"
+      - "Always defaulting to mean imputation without checking for skew or outliers first"
+      - "Imputing a column that's missing NOT AT RANDOM (e.g. income is missing specifically for high earners) without accounting for why it's missing"
+    real_world_example: "A housing price dataset where 15% of 'lot_size' values are missing because older listings didn't require that field. Median imputation preserves the typical lot size without being skewed by a few very large rural properties in the dataset."

@@ -230,3 +230,11 @@ App at `http://localhost:8080`
 - Five export endpoints returning downloadable files via FastAPI `Response` with proper `Content-Disposition` headers
 - Frontend Export page with direct download buttons for all five formats
 - Verified end to end: replay-check confirmed exact match with live data, reordering correctly re-applied steps from scratch, all five export formats downloaded with correct content, generated Python script inspected and confirmed to accurately reproduce applied transformations
+
+### Day 19 — Learning Mode
+- Extended `Recommendation` schema with an optional `learning_content` field (concept, why it matters, math explanation, common mistakes, real-world example) — populated per-rule in YAML, `None` when absent
+- Rule engine passes `learning_content` through in both `evaluate_rules` and `evaluate_dataset_rules`
+- Global Learning Mode toggle using NiceGUI's `app.storage.user` (per-browser-session, persists across page navigation, never sent to the backend — purely a frontend display preference)
+- Recommendation Card (built Day 4, reused ~15 times since) extended to conditionally render a "📚 Learn More" section when Learning Mode is on AND the specific rule has learning content — the same component handles both states without needing a separate "learning mode version"
+- **Content coverage is intentionally partial**: 3 of ~40 rules across all knowledge_base YAML files currently have learning_content populated (missing values - moderate numerical, outliers - moderate, outliers - significant), proving the mechanism works correctly end to end. Filling in the remaining rules is pure content-writing, not engineering, and is left as incremental ongoing work rather than a blocker
+- Verified end to end: toggle correctly persists across page navigation, learning content renders only for rules that have it, gracefully renders nothing for rules that don't (no errors, no empty sections)

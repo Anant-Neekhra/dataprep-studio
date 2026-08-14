@@ -78,6 +78,13 @@ class ColumnTypeInfo(BaseModel):
     effective_type: str     # what's actually being used (override if present)
     is_overridden: bool
 
+class LearningContent(BaseModel):
+    concept: str
+    why_it_matters: str
+    math_explanation: str | None = None
+    common_mistakes: list[str] = []
+    real_world_example: str | None = None
+
 class Recommendation(BaseModel):
     rule_id: str
     category: str
@@ -89,6 +96,7 @@ class Recommendation(BaseModel):
     disadvantages: list[str]
     alternatives: list[str]
     docs_url: str | None = None
+    learning_content: LearningContent | None = None
 
 class ImputeRequest(BaseModel):
     strategy: Literal["mean", "median", "mode", "constant", "forward_fill", "backward_fill", "drop_rows"]

@@ -1,19 +1,30 @@
 # DataPrep Studio
 
-An interactive, explainable data analysis and preprocessing workbench. Upload a dataset, and instead of black-box AutoML, get transparent, rule-based recommendations for every cleaning and preparation step — with the reasoning, alternatives, and trade-offs always shown before anything is applied.
+An interactive, explainable data analysis and preprocessing workbench. Upload a CSV and get full profiling, data-quality detection, and preprocessing recommendations — every suggestion backed by a deterministic rule (not AI), with the reasoning, alternatives, and trade-offs shown before anything is applied. Every transformation is preview-then-apply, fully undoable, and exportable as CSV, Parquet, a reproducible pipeline definition, or a standalone Python script.
+
+## What it does
+
+- **Upload → Profile → Recommend → Apply**, with nothing changed silently
+- **Human-in-the-loop column typing** — auto-detects numerical/categorical/datetime/id/text/multi-label columns, with a full override system for when auto-detection gets it wrong (e.g. an ID column that looks numeric)
+- **A YAML-driven rule engine** (not a black box) covering missing values, duplicates, data quality issues, datatypes, distribution shape, outliers, multicollinearity, encoding, and scaling — every recommendation includes *why*, pros/cons, alternatives, and a documentation link
+- **Preview → Apply → Undo/Redo** on every transformation, backed by full SQLite version history — nothing is ever destructive
+- **"Why Not?" comparisons** — see two strategies (e.g. mean vs. median imputation) run side-by-side on your actual data before choosing
+- **Pipeline reordering with real replay** — re-run every applied transformation from the original data in a new order
+- **Five export formats**, including a Python script generator that reproduces your entire pipeline in plain pandas/numpy/scipy, independent of this app
+- **A health-score Dashboard** that ties the whole session together, with a transparent, explainable scoring breakdown
 
 ## Architecture
 
-Two independent services. The frontend is a thin client of a documented REST API.
+NiceGUI (frontend, :8080) --HTTP--> FastAPI (backend, :8000) --> Pandas / Rule Engine / SQLite
+Two independent services. The frontend is a thin client of a documented REST API (`/docs` for the full interactive spec) — the backend could serve a completely different frontend unchanged.
 
 ## Tech Stack
 
-**Backend:** FastAPI, Pydantic, Pandas, NumPy, SciPy, Scikit-learn, PyYAML, PyArrow
+**Backend:** FastAPI, Pydantic, Pandas, NumPy, SciPy, Scikit-learn (preprocessing only), PyYAML, simpleeval, PyArrow, SQLite
 **Frontend:** NiceGUI, Plotly
-**Storage:** SQLite (history/versioning), Parquet/CSV (export)
 **Infra:** Docker, Docker Compose, GitHub Actions, Pytest, Ruff, Black
 
-## Running locally
+## Running locally (without Docker)
 
 **Backend:**
 ```bash
@@ -34,6 +45,25 @@ pip install -r requirements.txt
 python app.py
 ```
 App at `http://localhost:8080`
+
+## Running with Docker
+
+```bash
+docker compose up --build
+```
+Frontend: `http://localhost:8080` · Backend: `http://localhost:8000/docs`
+
+Data persists in a named Docker volume across container restarts.
+
+## Running tests
+
+```bash
+cd backend
+pytest -v
+```
+
+## Project status
+It's a solo project — see the Progress Log below for the full build history, including real bugs found and fixed along the way. Test coverage currently focuses on the highest-risk service modules (imputation, outliers, pipeline replay); not yet exhaustive across every module.
 
 ## Progress Log
 

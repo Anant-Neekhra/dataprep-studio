@@ -277,3 +277,10 @@ It's a solo project — see the Progress Log below for the full build history, i
 - **Navigation consistency fix**: every module page's "back" link now points to Dashboard rather than Recommendations, since Dashboard's nav row gives one-click access to everywhere else — closes a real gap where users had no path back to Dashboard except returning to Upload first
 - **Recommendations link visually highlighted** (bold, orange, ⚡) within the shared nav component, since it's the most likely next action after landing on Dashboard — the "see problems → go fix them" loop the whole app is built around
 - Verified end to end: health score and breakdown reflect real dataset issues accurately, dashboard aggregation matches what's shown on individual pages (overview, history, recommendations), full navigation loop confirmed from any module page back to Dashboard
+
+### Post-completion — Navigation redesign + Transformations hub
+- **Fixed a real UX gap**: transformation pages (Missing Values, Duplicates, Datatypes, Distribution, Outliers, Encoding, Scaling) were only reachable via "Go handle this →" links inside Recommendation cards — meaning a user couldn't apply a transformation unless the rule engine happened to flag that exact column/operation first, even though the transformation logic itself had no such dependency
+- New **Transformations hub page** (`/transformations/{id}`): direct access to all 7 transformation pages regardless of whether anything was recommended, restoring full user agency over the dataset
+- **Redesigned `dataset_nav_links` into a three-column layout** (analysis tools left, hub pages centered, workflow/output tools right) — replacing a single wrapped row of 10 links that had become visually cluttered as more pages were added over the course of the project
+- Removed Categorical Analysis from the persistent nav (page still fully functional, reachable directly) since it added clutter without proportionate value as a permanent link
+- Recommendations (⚡) and Transformations (🛠) visually emphasized in the center column as the two most likely next actions from Dashboard or Column Types

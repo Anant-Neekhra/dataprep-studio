@@ -9,35 +9,55 @@ BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
 
 def dataset_nav_links(dataset_id: str, current_page: str = ""):
     """
-    Renders a consistent set of cross-links to every dataset-scoped page.
-    Called at the top of every page below Upload, so navigation is
-    identical everywhere instead of ad-hoc per page. current_page can be
-    used to skip linking to the page you're already on.
+    Three-column navigation: analysis tools on the left, the two hub
+    pages (Recommendations, Column Types) centered and emphasized, and
+    workflow/output tools (History, Pipeline, Export) on the right.
     """
-    links = [
-        ("Column Types & Drop Columns", "column-types"),
-        ("Recommendations", "recommendations"),
+    left_links = [
         ("Correlation Analysis", "correlation"),
-        ("Categorical Analysis", "categorical"),
         ("Feature Inspector", "inspect"),
         ("Visualization Center", "visualize"),
-        ("Version History", "history"),
-        ("Pipeline View", "pipeline"),
-        ("Export", "export"),
+    ]
+    center_links = [
+        ("Recommendations", "recommendations"),
+        ("Column Types & Drop Columns", "column-types"),
+        ("Transformations", "transformations"),
         ("Dashboard", "dashboard"),
     ]
-    with ui.row().classes("gap-4 flex-wrap justify-center max-w-2xl"):
-        for label, path in links:
-            if path == current_page:
-                continue
-            if path == "recommendations":
-                ui.link(f"⚡ {label} →", f"/{path}/{dataset_id}").classes(
-                    "text-sm font-semibold text-orange-600"
-                )
-            else:
-                ui.link(f"{label} →", f"/{path}/{dataset_id}").classes(
-                    "text-sm text-blue-600"
-                )
+    right_links = [
+        ("Version History", "history"),
+        ("Pipeline", "pipeline"),
+        ("Export", "export"),
+    ]
+
+    def render_link(label, path):
+        if path == current_page:
+            return
+        if path == "recommendations":
+            ui.link(f"⚡ {label} →", f"/{path}/{dataset_id}").classes(
+                "text-sm font-semibold text-orange-600"
+            )
+        elif path == "transformations":
+            ui.link(f"🛠 {label} →", f"/{path}/{dataset_id}").classes(
+                "text-sm font-semibold text-purple-600"
+            )
+        else:
+            ui.link(f"{label} →", f"/{path}/{dataset_id}").classes(
+                "text-sm text-blue-600"
+            )
+
+    with ui.row().classes("w-full max-w-4xl justify-center gap-8 items-start"):
+        with ui.column().classes("gap-1 items-start"):
+            for label, path in left_links:
+                render_link(label, path)
+
+        with ui.column().classes("gap-1 items-center"):
+            for label, path in center_links:
+                render_link(label, path)
+
+        with ui.column().classes("gap-1 items-start"):
+            for label, path in right_links:
+                render_link(label, path)
 
 def learning_mode_toggle():
     """
@@ -1964,3 +1984,36 @@ async def dashboard_page(dataset_id: str):
                         )
 
         ui.timer(0.1, load_dashboard, once=True)
+
+@ui.page("/transformations/{dataset_id}")
+async def transformations_page(dataset_id: str):
+    with ui.column().classes("items-center w-full mt-10 gap-4"):
+        ui.label("Transformations").classes("text-2xl font-bold")
+        ui.label(
+            "Apply any transformation directly — you don't need a recommendation "
+            "to fire first. Pick a column and strategy on any page below."
+        ).classes("text-sm text-gray-400 text-center max-w-xl")
+        ui.link("← Back to dashboard", f"/dashboard/{dataset_id}").classes(
+            "text-sm text-gray-400"
+        )
+
+        transforms = [
+            ("Missing Values", "missing-values", "Impute, drop, or compare strategies for missing data"),
+            ("Duplicates", "duplicates", "Remove duplicate rows or columns"),
+            ("Datatype Conversion", "datatypes", "Convert columns to datetime, integer, category, etc."),
+            ("Distribution Transforms", "distribution", "Log, sqrt, Box-Cox, Yeo-Johnson"),
+            ("Outlier Treatment", "outliers", "Detect and cap/remove outliers"),
+            ("Encoding", "encoding", "One-hot, label, ordinal, frequency, binary, multi-label"),
+            ("Scaling", "scaling", "Standard, MinMax, Robust, MaxAbs, Normalize"),
+        ]
+
+        with ui.column().classes("w-full max-w-xl gap-2"):
+            for label, path, description in transforms:
+                with ui.card().classes("w-full"):
+                    with ui.row().classes("items-center justify-between w-full"):
+                        with ui.column().classes("gap-0"):
+                            ui.label(label).classes("font-semibold")
+                            ui.label(description).classes("text-xs text-gray-500")
+                        ui.link("Open →", f"/{path}/{dataset_id}").classes(
+                            "text-sm text-blue-600 font-medium"
+                        )

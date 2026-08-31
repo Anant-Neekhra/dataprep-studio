@@ -10,6 +10,8 @@ class Settings(BaseSettings):
         "http://127.0.0.1:8080",
     ]
 
+    max_upload_size_mb: int = 200
+
     model_config = SettingsConfigDict(env_file=".env")
 
 

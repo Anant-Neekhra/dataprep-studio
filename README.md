@@ -284,3 +284,9 @@ It's a solo project — see the Progress Log below for the full build history, i
 - **Redesigned `dataset_nav_links` into a three-column layout** (analysis tools left, hub pages centered, workflow/output tools right) — replacing a single wrapped row of 10 links that had become visually cluttered as more pages were added over the course of the project
 - Removed Categorical Analysis from the persistent nav (page still fully functional, reachable directly) since it added clutter without proportionate value as a permanent link
 - Recommendations (⚡) and Transformations (🛠) visually emphasized in the center column as the two most likely next actions from Dashboard or Column Types
+
+### Post-completion — Security & config hygiene
+- **Upload size limit**: `MAX_UPLOAD_SIZE_MB` (default 200MB) enforced before parsing — previously an unbounded upload could load an arbitrarily large file fully into memory via `pd.read_csv`, risking a crash of the single-process backend for all users/datasets. Oversized uploads now return a clean `413` instead
+- **Secrets and config moved out of source code**: `.env.example` added for both backend and frontend, documenting expected configuration without committing real values. NiceGUI's `storage_secret` (used to sign browser session data) now reads from `NICEGUI_STORAGE_SECRET` environment variable instead of being hardcoded in `app.py`
+- Docker Compose updated to pass the same environment variable through, keeping local and containerized runs consistent
+- Note: the Docker Compose value is still a visible placeholder rather than pulled from a `.env` file via `${VAR}` substitution — a reasonable stopping point for local/demo use; true secret injection via a gitignored `.env` next to `docker-compose.yml` would be the next step for any real deployment

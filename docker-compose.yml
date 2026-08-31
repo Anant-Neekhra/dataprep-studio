@@ -20,6 +20,7 @@ services:
       - ./frontend:/app
     environment:
       - BACKEND_URL=http://backend:8000
+      - NICEGUI_STORAGE_SECRET=change-this-to-a-random-string-in-any-real-deployment
     depends_on:
       backend:
         condition: service_healthy

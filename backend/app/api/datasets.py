@@ -103,6 +103,7 @@ from app.services.export_service import (
     generate_pipeline_script,
 )
 from app.services.health_service import compute_health_score
+from app.config import settings
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -119,6 +120,14 @@ async def upload_dataset(file: UploadFile) -> UploadResponse:
         raise HTTPException(status_code=400, detail="Only CSV files are supported right now.")
 
     raw_bytes = await file.read()
+
+    max_bytes = settings.max_upload_size_mb * 1024 * 1024
+    if len(raw_bytes) > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large ({len(raw_bytes) / (1024*1024):.1f} MB). "
+                   f"Maximum allowed size is {settings.max_upload_size_mb} MB.",
+        )
 
     try:
         df = pd.read_csv(io.BytesIO(raw_bytes))

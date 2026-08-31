@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 from nicegui import app as nicegui_app
 
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
+STORAGE_SECRET = os.environ.get("NICEGUI_STORAGE_SECRET", "dev-only-not-for-production")
 
 def dataset_nav_links(dataset_id: str, current_page: str = ""):
     """
@@ -642,7 +643,7 @@ async def missing_values_page(dataset_id: str):
 
         ui.button("Compare", on_click=do_compare)
 
-ui.run(title="DataPrep Studio", host="0.0.0.0", port=8080, reload=True, storage_secret="dev-secret-change-in-production")
+ui.run(title="DataPrep Studio", host="0.0.0.0", port=8080, reload=True, storage_secret=STORAGE_SECRET)
 
 @ui.page("/duplicates/{dataset_id}")
 async def duplicates_page(dataset_id: str):
